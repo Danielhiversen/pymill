@@ -1,6 +1,8 @@
 # pymill
 
 Python3 library for Mill.
+Based on https://pastebin.com/53Nk0wJA and Postman capturing from the app.
+All requests are send unencrypted from the app :(
 
 Control Mill heaters and get meassured temperature. 
 
