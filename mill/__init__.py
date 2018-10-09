@@ -3,20 +3,21 @@
 # All requests are send unencrypted from the app :(
 import asyncio
 import datetime as dt
+import hashlib
 import json
 import logging
-
-import aiohttp
-import async_timeout
-import hashlib
 import random
 import string
 import time
 
+import aiohttp
+import async_timeout
+
+
 API_ENDPOINT_1 = 'https://eurouter.ablecloud.cn:9005/zc-account/v1'
 API_ENDPOINT_2 = 'http://eurouter.ablecloud.cn:5000/millService/v1'
 DEFAULT_TIMEOUT = 10
-MIN_TIME_BETWEEN_UPDATES = dt_util.dt.timedelta(seconds=10)
+MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=10)
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class Mill:
     """Class to comunicate with the Mill api."""
+    # pylint: disable=too-many-instance-attributes
 
     def __init__(self, username, password,
                  timeout=DEFAULT_TIMEOUT,
@@ -101,6 +103,8 @@ class Mill:
 
     async def request(self, command, payload, retry=2):
         """Request data."""
+        # pylint: disable=too-many-return-statements
+
         if self._token is None:
             _LOGGER.error("No token")
             return
@@ -321,6 +325,7 @@ class Mill:
 
 class Room:
     """Representation of room."""
+    # pylint: disable=too-few-public-method
 
     room_id = None
     comfort_temp = None
@@ -333,6 +338,7 @@ class Room:
 
 class Heater:
     """Representation of heater."""
+    # pylint: disable=too-few-public-method
 
     device_id = None
     current_temp = None
