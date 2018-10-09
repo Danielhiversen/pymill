@@ -5,10 +5,9 @@ with open("README.md", 'r') as fp:
     long_description = fp.read()
 
 setup(
-    name = 'mill',
+    name = 'millheater',
     packages = ['mill'],
-    install_requires=['gql>=0.1.0', 'aiohttp>=3.0.6',
-                      'async_timeout>=1.4.0', 'websockets>=6.0'],
+    install_requires=['aiohttp>=3.0.6', 'async_timeout>=1.4.0'],
     version='0.1.0',
     description='A python3 library to communicate with Mill',
     long_description=long_description,
