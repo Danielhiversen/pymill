@@ -4,12 +4,12 @@ matrix:
   include:
   - python: '3.5'
     env: TOXENV=lint
-
 cache:
   directories:
   - "$HOME/.cache/pip"
 install:
-- pip install aiohttp async_timeout
+- pip install flake8 pylint aiohttp async_timeout
+language: python
 script:
 - flake8 mill --max-line-length=120
 - pylint mill --max-line-length=120
