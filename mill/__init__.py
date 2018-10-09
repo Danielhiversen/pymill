@@ -325,7 +325,7 @@ class Mill:
 
 class Room:
     """Representation of room."""
-    # pylint: disable=too-few-public-method
+    # pylint: disable=too-few-public-methods
 
     room_id = None
     comfort_temp = None
@@ -338,7 +338,7 @@ class Room:
 
 class Heater:
     """Representation of heater."""
-    # pylint: disable=too-few-public-method
+    # pylint: disable=too-few-public-methods
 
     device_id = None
     current_temp = None
