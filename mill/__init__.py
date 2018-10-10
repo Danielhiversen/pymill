@@ -71,7 +71,6 @@ class Mill:
             return False
 
         result = await resp.text()
-        _LOGGER.debug(result)
         if '"errorCode":3504' in result:
             _LOGGER.error('Wrong password')
             return False
@@ -312,7 +311,7 @@ class Mill:
         payload = {"homeType": 0,
                    "timeZoneNum": "+02:00",
                    "deviceId": device_id,
-                   "value": set_temp,
+                   "value": int(set_temp),
                    "key": "holidayTemp"}
         await self.request("/changeDeviceInfo", payload)
 

@@ -4,11 +4,14 @@ Python3 library for Mill.
 Based on https://pastebin.com/53Nk0wJA and Postman capturing from the app.
 All requests are send unencrypted from the app :(
 
-Control Mill heaters and get meassured temperature. 
+Control Mill heaters and get measured temperatures.
+
+[Buy me a coffee :)](http://paypal.me/dahoiv)
+
 
 ## Install
 ```
-pip3 install pymill
+pip3 install millheater
 ```
 
 ## Example:
@@ -28,4 +31,4 @@ mill_connection.sync_close_connection()
 
 ```
 
-The library is used as part of Home Assitant: [https://github.com/home-assistant/home-assistant/blob/dev/homeassistant/components/climate/mill.py](https://github.com/home-assistant/home-assistant/blob/dev/homeassistant/components/climate/mill.py)
+The library is used as part of Home Assistant: [https://github.com/home-assistant/home-assistant/blob/dev/homeassistant/components/climate/mill.py](https://github.com/home-assistant/home-assistant/blob/dev/homeassistant/components/climate/mill.py)
