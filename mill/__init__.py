@@ -158,7 +158,9 @@ class Mill:
 
         if '"error":"device offline"' in result:
             if retry < 1:
+                _LOGGER.error("Failed to send request, %s", result)
                 return None
+            _LOGGER.error("Failed to send request, %s. Retrying...", result)
             return await self.request(command, payload, retry-1) 
 
         if 'errorCode' in result:
