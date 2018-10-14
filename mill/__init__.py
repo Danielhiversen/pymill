@@ -190,6 +190,19 @@ class Mill:
             if not rooms:
                 continue
             for _room in rooms:
+                payload = {"roomId": _room.get("roomId"), "timeZoneNum": "+01:00"}
+                data_heaters = await self.request("/selectDevicebyRoom", payload)
+                if data_heaters is None:
+                    continue
+                heaters = data_heaters.get('deviceInfo', [])
+                for _heater in heaters:
+                    _id = _heater.get('deviceId')
+                    heater = self.heaters.get(_id, Heater())
+                    heater.device_id = _id
+                    heater.independent_device = False
+                    heater.name = _heater.get('deviceName')
+                    self.heaters[_id] = heater
+
                 _id = _room.get('roomId')
                 room = self.rooms.get(_id, Room())
                 room.room_id = _id
@@ -261,6 +274,21 @@ class Mill:
                 heater.power_status = _heater.get('powerStatus')
 
                 self.heaters[_id] = heater
+
+        for _id, heater in self.heaters.items():
+            if heater.independent_device:
+                continue
+            payload = {"deviceId": _id}
+            _heater = await self.request("/selectDevice", payload)
+            if _heater is None:
+                continue
+            heater.current_temp = _heater.get('currentTemp')
+            heater.device_status = _heater.get('deviceStatus')
+            heater.name = _heater.get('deviceName')
+            heater.fan_status = _heater.get('fanStatus')
+            heater.set_temp = _heater.get('holidayTemp')
+            heater.power_status = _heater.get('powerStatus')
+            self.heaters[_id] = heater
 
     def sync_update_heaters(self):
         """Request data."""
@@ -352,3 +380,4 @@ class Heater:
     set_temp = None
     fan_status = None
     power_status = None
+    independent_device = True
