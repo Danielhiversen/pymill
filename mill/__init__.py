@@ -170,17 +170,23 @@ class Mill:
         data = json.loads(result)
         return data
 
+    def sync_request(self, command, payload, retry=2):
+        """Request data."""
+        loop = asyncio.get_event_loop()
+        task = loop.create_task(self.request(command, payload, retry))
+        return loop.run_until_complete(task)
+
     async def get_home_list(self):
         """Request data."""
         resp = await self.request("/selectHomeList", "{}")
         if resp is None:
             return None
-        homes = resp.get('homeList')
-        return homes
+        return resp.get('homeList')
 
     async def update_rooms(self):
         """Request data."""
         homes = await self.get_home_list()
+        print(homes)
         if homes is None:
             return None
         for home in homes:
@@ -219,7 +225,7 @@ class Mill:
         """Request data."""
         loop = asyncio.get_event_loop()
         task = loop.create_task(self.update_rooms())
-        loop.run_until_complete(task)
+        return loop.run_until_complete(task)
 
     async def set_room_temperatures(self, room_id, sleep_temp=None,
                                     comfort_temp=None, away_temp=None):
@@ -249,7 +255,7 @@ class Mill:
                                                            sleep_temp,
                                                            comfort_temp,
                                                            away_temp))
-        loop.run_until_complete(task)
+        return loop.run_until_complete(task)
 
     async def update_heaters(self):
         """Request data."""
@@ -280,7 +286,6 @@ class Mill:
                 continue
             payload = {"deviceId": _id}
             _heater = await self.request("/selectDevice", payload)
-            print(payload)
             if _heater is None:
                 continue
             heater.current_temp = _heater.get('currentTemp')
@@ -362,23 +367,38 @@ class Room:
     """Representation of room."""
     # pylint: disable=too-few-public-methods
 
+    name = None
     room_id = None
     comfort_temp = None
     away_temp = None
     sleep_temp = None
-    name = None
     is_offline = None
     heat_status = None
+
+    def __repr__(self):
+        return 'Room(name={}, room_id={},' \
+               ' comfort_temp={}, away_temp={})'.format(self.name,
+                                                       self.room_id,
+                                                       self.comfort_temp,
+                                                       self.away_temp
+                                                       )
 
 
 class Heater:
     """Representation of heater."""
     # pylint: disable=too-few-public-methods
-
+    name = None
     device_id = None
     current_temp = None
-    name = None
     set_temp = None
     fan_status = None
     power_status = None
     independent_device = True
+
+    def __repr__(self):
+        return 'Heater(name={}, device_id={},' \
+               ' current_temp={}, set_temp={})'.format(self.name,
+                                                       self.device_id,
+                                                       self.current_temp,
+                                                       self.set_temp
+                                                       )
