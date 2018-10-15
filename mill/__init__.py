@@ -186,7 +186,6 @@ class Mill:
     async def update_rooms(self):
         """Request data."""
         homes = await self.get_home_list()
-        print(homes)
         if homes is None:
             return None
         for home in homes:
@@ -378,10 +377,10 @@ class Room:
     def __repr__(self):
         return 'Room(name={}, room_id={},' \
                ' comfort_temp={}, away_temp={})'.format(self.name,
-                                                       self.room_id,
-                                                       self.comfort_temp,
-                                                       self.away_temp
-                                                       )
+                                                        self.room_id,
+                                                        self.comfort_temp,
+                                                        self.away_temp
+                                                        )
 
 
 class Heater:
