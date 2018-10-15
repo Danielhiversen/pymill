@@ -339,22 +339,38 @@ class Room:
     """Representation of room."""
     # pylint: disable=too-few-public-methods
 
+    name = None
     room_id = None
     comfort_temp = None
     away_temp = None
     sleep_temp = None
-    name = None
     is_offline = None
     heat_status = None
+
+    def __repr__(self):
+        return 'Room(name={}, room_id={},' \
+               ' comfort_temp={}, away_temp={})'.format(self.name,
+                                                       self.room_id,
+                                                       self.comfort_temp,
+                                                       self.away_temp
+                                                       )
 
 
 class Heater:
     """Representation of heater."""
     # pylint: disable=too-few-public-methods
-
+    name = None
     device_id = None
     current_temp = None
-    name = None
     set_temp = None
     fan_status = None
     power_status = None
+    independent_device = True
+
+    def __repr__(self):
+        return 'Heater(name={}, device_id={},' \
+               ' current_temp={}, set_temp={})'.format(self.name,
+                                                       self.device_id,
+                                                       self.current_temp,
+                                                       self.set_temp
+                                                       )
