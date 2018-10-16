@@ -1,7 +1,7 @@
 # pymill [![Build Status](https://travis-ci.org/Danielhiversen/pymill.svg?branch=master)](https://travis-ci.org/Danielhiversen/pymill)
 
 Python3 library for Mill.
-Based on https://pastebin.com/53Nk0wJA and Postman capturing from the app.
+Based on https://pastebin.com/53Nk0wJA .
 
 
 Control Mill heaters and get measured temperatures.
