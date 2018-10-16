@@ -6,7 +6,6 @@ Based on https://pastebin.com/53Nk0wJA and Postman capturing from the app.
 
 Control Mill heaters and get measured temperatures.
 
-[Buy me a coffee :)](http://paypal.me/dahoiv)
 
 
 ## Install
