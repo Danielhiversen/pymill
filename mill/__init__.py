@@ -18,6 +18,7 @@ API_ENDPOINT_1 = 'https://eurouter.ablecloud.cn:9005/zc-account/v1'
 API_ENDPOINT_2 = 'http://eurouter.ablecloud.cn:5000/millService/v1'
 DEFAULT_TIMEOUT = 10
 MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=10)
+REQUEST_TIMEOUT = '300'
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -80,8 +81,13 @@ class Mill:
             return False
 
         data = json.loads(result)
+        token = data.get('token')
+        if token is None:
+            _LOGGER.error('No token')
+            return False
+
+        self._token = token
         self._user_id = data.get('userId')
-        self._token = data.get('token')
         return True
 
     def sync_connect(self):
@@ -113,7 +119,7 @@ class Mill:
         nonce = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(16))
         url = API_ENDPOINT_2 + command
         timestamp = int(time.time())
-        signature = hashlib.sha1(str('300'
+        signature = hashlib.sha1(str(REQUEST_TIMEOUT
                                      + str(timestamp)
                                      + nonce
                                      + self._token).encode("utf-8")).hexdigest()
@@ -127,7 +133,7 @@ class Mill:
             "X-Zc-Seq-Id": "1",
             "X-Zc-Version": "1",
             "X-Zc-Timestamp": str(timestamp),
-            "X-Zc-Timeout": "300",
+            "X-Zc-Timeout": REQUEST_TIMEOUT,
             "X-Zc-Nonce": nonce,
             "X-Zc-User-Id": str(self._user_id),
             "X-Zc-User-Signature": signature,
@@ -139,7 +145,7 @@ class Mill:
                                                   data=json.dumps(payload),
                                                   headers=headers)
         except (asyncio.TimeoutError, aiohttp.ClientError) as err:
-            _LOGGER.error("Error sending command to Mill: %s", err)
+            _LOGGER.error("Error sending command to Mill: %s, %s", command, err)
             return None
 
         result = await resp.text()
