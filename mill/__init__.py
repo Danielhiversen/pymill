@@ -176,13 +176,18 @@ class Mill:
         data = json.loads(result)
         return data
 
+    def sync_request(self, command, payload, retry=2):
+        """Request data."""
+        loop = asyncio.get_event_loop()
+        task = loop.create_task(self.request(command, payload, retry))
+        return loop.run_until_complete(task)
+
     async def get_home_list(self):
         """Request data."""
         resp = await self.request("/selectHomeList", "{}")
         if resp is None:
             return None
-        homes = resp.get('homeList')
-        return homes
+        return resp.get('homeList')
 
     async def update_rooms(self):
         """Request data."""
@@ -196,6 +201,19 @@ class Mill:
             if not rooms:
                 continue
             for _room in rooms:
+                payload = {"roomId": _room.get("roomId"), "timeZoneNum": "+01:00"}
+                data_heaters = await self.request("/selectDevicebyRoom", payload)
+                if data_heaters is None:
+                    continue
+                heaters = data_heaters.get('deviceInfo', [])
+                for _heater in heaters:
+                    _id = _heater.get('deviceId')
+                    heater = self.heaters.get(_id, Heater())
+                    heater.device_id = _id
+                    heater.independent_device = False
+                    heater.name = _heater.get('deviceName')
+                    self.heaters[_id] = heater
+
                 _id = _room.get('roomId')
                 room = self.rooms.get(_id, Room())
                 room.room_id = _id
@@ -212,7 +230,7 @@ class Mill:
         """Request data."""
         loop = asyncio.get_event_loop()
         task = loop.create_task(self.update_rooms())
-        loop.run_until_complete(task)
+        return loop.run_until_complete(task)
 
     async def set_room_temperatures(self, room_id, sleep_temp=None,
                                     comfort_temp=None, away_temp=None):
@@ -242,7 +260,7 @@ class Mill:
                                                            sleep_temp,
                                                            comfort_temp,
                                                            away_temp))
-        loop.run_until_complete(task)
+        return loop.run_until_complete(task)
 
     async def update_heaters(self):
         """Request data."""
@@ -267,6 +285,21 @@ class Mill:
                 heater.power_status = _heater.get('powerStatus')
 
                 self.heaters[_id] = heater
+
+        for _id, heater in self.heaters.items():
+            if heater.independent_device:
+                continue
+            payload = {"deviceId": _id}
+            _heater = await self.request("/selectDevice", payload)
+            if _heater is None:
+                continue
+            heater.current_temp = _heater.get('currentTemp')
+            heater.device_status = _heater.get('deviceStatus')
+            heater.name = _heater.get('deviceName')
+            heater.fan_status = _heater.get('fanStatus')
+            heater.set_temp = _heater.get('holidayTemp')
+            heater.power_status = _heater.get('powerStatus')
+            self.heaters[_id] = heater
 
     def sync_update_heaters(self):
         """Request data."""
@@ -339,22 +372,38 @@ class Room:
     """Representation of room."""
     # pylint: disable=too-few-public-methods
 
+    name = None
     room_id = None
     comfort_temp = None
     away_temp = None
     sleep_temp = None
-    name = None
     is_offline = None
     heat_status = None
+
+    def __repr__(self):
+        return 'Room(name={}, room_id={},' \
+               ' comfort_temp={}, away_temp={})'.format(self.name,
+                                                        self.room_id,
+                                                        self.comfort_temp,
+                                                        self.away_temp
+                                                        )
 
 
 class Heater:
     """Representation of heater."""
     # pylint: disable=too-few-public-methods
-
+    name = None
     device_id = None
     current_temp = None
-    name = None
     set_temp = None
     fan_status = None
     power_status = None
+    independent_device = True
+
+    def __repr__(self):
+        return 'Heater(name={}, device_id={},' \
+               ' current_temp={}, set_temp={})'.format(self.name,
+                                                       self.device_id,
+                                                       self.current_temp,
+                                                       self.set_temp
+                                                       )
