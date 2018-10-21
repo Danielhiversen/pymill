@@ -26,7 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class Mill:
     """Class to comunicate with the Mill api."""
-    # pylint: disable=too-many-instance-attributes
+    # pylint: disable=too-many-instance-attributes, too-many-public-methods
 
     def __init__(self, username, password,
                  timeout=DEFAULT_TIMEOUT,
@@ -67,8 +67,8 @@ class Mill:
                 resp = await self.websession.post(url,
                                                   data=json.dumps(payload),
                                                   headers=headers)
-        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
-            _LOGGER.error("Error connecting to Mill: %s", err)
+        except (asyncio.TimeoutError, aiohttp.ClientError):
+            _LOGGER.error("Error connecting to Mill",  exc_info=True)
             return False
 
         result = await resp.text()
@@ -149,8 +149,8 @@ class Mill:
                 resp = await self.websession.post(url,
                                                   data=json.dumps(payload),
                                                   headers=headers)
-        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
-            _LOGGER.error("Error sending command to Mill: %s, %s", command, err)
+        except (asyncio.TimeoutError, aiohttp.ClientError):
+            _LOGGER.error("Error sending command to Mill: %s", command,  exc_info=True)
             return None
 
         result = await resp.text()
@@ -380,6 +380,7 @@ class Mill:
         loop.run_until_complete(task)
 
     async def find_all_heaters(self):
+        """Find all heaters."""
         await self.update_rooms()
         await self.update_heaters()
 
