@@ -237,12 +237,13 @@ class Mill:
 
     async def set_room_temperatures_by_name(self, room_name, sleep_temp=None,
                                             comfort_temp=None, away_temp=None):
-        """Set room temps."""
+        """Set room temps by name."""
         for _room in self.rooms:
             if room_name != _room.name:
                 continue
             await self.set_room_temperatures(_room.room_id, sleep_temp, comfort_temp, away_temp)
             return
+        _LOGGER.error("No room with name %s found", room_name)
 
     async def set_room_temperatures(self, room_id, sleep_temp=None,
                                     comfort_temp=None, away_temp=None):
@@ -251,18 +252,16 @@ class Mill:
         if room is None:
             _LOGGER.error("No such device")
             return
-        if sleep_temp is None:
-            sleep_temp = room.sleep_temp
-        if away_temp is None:
-            away_temp = room.away_temp
-        if comfort_temp is None:
-            comfort_temp = room.comfort_temp
+        room.sleep_temp = sleep_temp if sleep_temp else room.sleep_temp
+        room.away_temp = away_temp if away_temp else room.away_temp
+        room.comfort_temp = comfort_temp if comfort_temp else room.comfort_temp
         payload = {"roomId": room_id,
-                   "sleepTemp": sleep_temp,
-                   "comfortTemp": comfort_temp,
-                   "awayTemp": away_temp,
+                   "sleepTemp": room.sleep_temp,
+                   "comfortTemp": room.comfort_temp,
+                   "awayTemp": room.away_temp,
                    "homeType": 0}
         await self.request("/changeRoomModeTempInfo", payload)
+        self.rooms[room_id] = room
 
     def sync_set_room_temperatures(self, room_id, sleep_temp=None,
                                    comfort_temp=None, away_temp=None):
@@ -277,8 +276,6 @@ class Mill:
     async def update_heaters(self):
         """Request data."""
         homes = await self.get_home_list()
-        if homes is None:
-            return None
         for home in homes:
             payload = {"homeId": home.get("homeId")}
             data = await self.request("/getIndependentDevices", payload)
