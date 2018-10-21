@@ -68,7 +68,7 @@ class Mill:
                                                   data=json.dumps(payload),
                                                   headers=headers)
         except (asyncio.TimeoutError, aiohttp.ClientError):
-            _LOGGER.error("Error connecting to Mill",  exc_info=True)
+            _LOGGER.error("Error connecting to Mill", exc_info=True)
             return False
 
         result = await resp.text()
@@ -150,7 +150,7 @@ class Mill:
                                                   data=json.dumps(payload),
                                                   headers=headers)
         except (asyncio.TimeoutError, aiohttp.ClientError):
-            _LOGGER.error("Error sending command to Mill: %s", command,  exc_info=True)
+            _LOGGER.error("Error sending command to Mill: %s", command, exc_info=True)
             return None
 
         result = await resp.text()
