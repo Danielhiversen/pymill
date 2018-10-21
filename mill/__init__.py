@@ -86,8 +86,13 @@ class Mill:
             _LOGGER.error('No token')
             return False
 
+        user_id = data.get('userId')
+        if user_id is None:
+            _LOGGER.error('No user id')
+            return False
+
         self._token = token
-        self._user_id = data.get('userId')
+        self._user_id = user_id
         return True
 
     def sync_connect(self):
@@ -186,34 +191,17 @@ class Mill:
         """Request data."""
         resp = await self.request("/selectHomeList", "{}")
         if resp is None:
-            return None
-        return resp.get('homeList')
+            return []
+        return resp.get('homeList', [])
 
     async def update_rooms(self):
         """Request data."""
         homes = await self.get_home_list()
-        if homes is None:
-            return None
         for home in homes:
             payload = {"homeId": home.get("homeId"), "timeZoneNum": "+01:00"}
             data = await self.request("/selectRoombyHome", payload)
             rooms = data.get('roomInfo', [])
-            if not rooms:
-                continue
             for _room in rooms:
-                payload = {"roomId": _room.get("roomId"), "timeZoneNum": "+01:00"}
-                data_heaters = await self.request("/selectDevicebyRoom", payload)
-                if data_heaters is None:
-                    continue
-                heaters = data_heaters.get('deviceInfo', [])
-                for _heater in heaters:
-                    _id = _heater.get('deviceId')
-                    heater = self.heaters.get(_id, Heater())
-                    heater.device_id = _id
-                    heater.independent_device = False
-                    heater.name = _heater.get('deviceName')
-                    self.heaters[_id] = heater
-
                 _id = _room.get('roomId')
                 room = self.rooms.get(_id, Room())
                 room.room_id = _id
@@ -223,14 +211,38 @@ class Mill:
                 room.name = _room.get("roomName")
                 room.current_mode = _room.get("currentMode")
                 room.heat_status = _room.get("heatStatus")
+                room.home_name = _room.get("homeName")
 
                 self.rooms[_id] = room
+                payload = {"roomId": _room.get("roomId"), "timeZoneNum": "+01:00"}
+                room_device = await self.request("/selectDevicebyRoom", payload)
+
+                if room_device is None:
+                    continue
+                heater_info = room_device.get('deviceInfo', [])
+                for _heater in heater_info:
+                    _id = _heater.get('deviceId')
+                    heater = self.heaters.get(_id, Heater())
+                    heater.device_id = _id
+                    heater.independent_device = False
+                    heater.name = _heater.get('deviceName')
+                    heater.room = room
+                    self.heaters[_id] = heater
 
     def sync_update_rooms(self):
         """Request data."""
         loop = asyncio.get_event_loop()
         task = loop.create_task(self.update_rooms())
         return loop.run_until_complete(task)
+
+    async def set_room_temperatures_by_name(self, room_name, sleep_temp=None,
+                                            comfort_temp=None, away_temp=None):
+        """Set room temps."""
+        for _room in self.rooms:
+            if room_name != _room.name:
+                continue
+            await self.set_room_temperatures(_room.room_id, sleep_temp, comfort_temp, away_temp)
+            return
 
     async def set_room_temperatures(self, room_id, sleep_temp=None,
                                     comfort_temp=None, away_temp=None):
@@ -367,6 +379,10 @@ class Mill:
         task = loop.create_task(self.set_heater_temp(device_id, set_temp))
         loop.run_until_complete(task)
 
+    async def find_all_heaters(self):
+        await self.update_rooms()
+        await self.update_heaters()
+
 
 class Room:
     """Representation of room."""
@@ -379,6 +395,7 @@ class Room:
     sleep_temp = None
     is_offline = None
     heat_status = None
+    home_name = None
 
     def __repr__(self):
         return 'Room(name={}, room_id={},' \
@@ -399,6 +416,7 @@ class Heater:
     fan_status = None
     power_status = None
     independent_device = True
+    room = None
 
     def __repr__(self):
         return 'Heater(name={}, device_id={},' \
