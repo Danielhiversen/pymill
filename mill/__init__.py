@@ -13,7 +13,6 @@ import time
 import aiohttp
 import async_timeout
 
-
 API_ENDPOINT_1 = 'https://eurouter.ablecloud.cn:9005/zc-account/v1'
 API_ENDPOINT_2 = 'http://eurouter.ablecloud.cn:5000/millService/v1'
 DEFAULT_TIMEOUT = 10
@@ -26,7 +25,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class Mill:
     """Class to comunicate with the Mill api."""
-    # pylint: disable=too-many-instance-attributes
+    # pylint: disable=too-many-instance-attributes, too-many-public-methods
 
     def __init__(self, username, password,
                  timeout=DEFAULT_TIMEOUT,
@@ -67,8 +66,8 @@ class Mill:
                 resp = await self.websession.post(url,
                                                   data=json.dumps(payload),
                                                   headers=headers)
-        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
-            _LOGGER.error("Error connecting to Mill: %s", err)
+        except (asyncio.TimeoutError, aiohttp.ClientError):
+            _LOGGER.error("Error connecting to Mill", exc_info=True)
             return False
 
         result = await resp.text()
@@ -86,8 +85,13 @@ class Mill:
             _LOGGER.error('No token')
             return False
 
+        user_id = data.get('userId')
+        if user_id is None:
+            _LOGGER.error('No user id')
+            return False
+
         self._token = token
-        self._user_id = data.get('userId')
+        self._user_id = user_id
         return True
 
     def sync_connect(self):
@@ -112,7 +116,7 @@ class Mill:
 
         if self._token is None:
             _LOGGER.error("No token")
-            return
+            return None
 
         _LOGGER.debug(payload)
 
@@ -144,8 +148,8 @@ class Mill:
                 resp = await self.websession.post(url,
                                                   data=json.dumps(payload),
                                                   headers=headers)
-        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
-            _LOGGER.error("Error sending command to Mill: %s, %s", command, err)
+        except (asyncio.TimeoutError, aiohttp.ClientError):
+            _LOGGER.error("Error sending command to Mill: %s", command, exc_info=True)
             return None
 
         result = await resp.text()
@@ -172,7 +176,6 @@ class Mill:
         if 'errorCode' in result:
             _LOGGER.error("Failed to send request, %s", result)
             return None
-
         data = json.loads(result)
         return data
 
@@ -186,34 +189,17 @@ class Mill:
         """Request data."""
         resp = await self.request("/selectHomeList", "{}")
         if resp is None:
-            return None
-        return resp.get('homeList')
+            return []
+        return resp.get('homeList', [])
 
     async def update_rooms(self):
         """Request data."""
         homes = await self.get_home_list()
-        if homes is None:
-            return None
         for home in homes:
             payload = {"homeId": home.get("homeId"), "timeZoneNum": "+01:00"}
             data = await self.request("/selectRoombyHome", payload)
             rooms = data.get('roomInfo', [])
-            if not rooms:
-                continue
             for _room in rooms:
-                payload = {"roomId": _room.get("roomId"), "timeZoneNum": "+01:00"}
-                data_heaters = await self.request("/selectDevicebyRoom", payload)
-                if data_heaters is None:
-                    continue
-                heaters = data_heaters.get('deviceInfo', [])
-                for _heater in heaters:
-                    _id = _heater.get('deviceId')
-                    heater = self.heaters.get(_id, Heater())
-                    heater.device_id = _id
-                    heater.independent_device = False
-                    heater.name = _heater.get('deviceName')
-                    self.heaters[_id] = heater
-
                 _id = _room.get('roomId')
                 room = self.rooms.get(_id, Room())
                 room.room_id = _id
@@ -223,8 +209,23 @@ class Mill:
                 room.name = _room.get("roomName")
                 room.current_mode = _room.get("currentMode")
                 room.heat_status = _room.get("heatStatus")
+                room.home_name = _room.get("homeName")
 
                 self.rooms[_id] = room
+                payload = {"roomId": _room.get("roomId"), "timeZoneNum": "+01:00"}
+                room_device = await self.request("/selectDevicebyRoom", payload)
+
+                if room_device is None:
+                    continue
+                heater_info = room_device.get('deviceInfo', [])
+                for _heater in heater_info:
+                    _id = _heater.get('deviceId')
+                    heater = self.heaters.get(_id, Heater())
+                    heater.device_id = _id
+                    heater.independent_device = False
+                    heater.name = _heater.get('deviceName')
+                    heater.room = room
+                    self.heaters[_id] = heater
 
     def sync_update_rooms(self):
         """Request data."""
@@ -232,58 +233,53 @@ class Mill:
         task = loop.create_task(self.update_rooms())
         return loop.run_until_complete(task)
 
+    async def set_room_temperatures_by_name(self, room_name, sleep_temp=None,
+                                            comfort_temp=None, away_temp=None):
+        """Set room temps by name."""
+        if sleep_temp is None and comfort_temp is None and away_temp is None:
+            return
+        for room_id, _room in self.rooms.items():
+            if _room.name == room_name:
+                await self.set_room_temperatures(room_id, sleep_temp,
+                                                 comfort_temp, away_temp)
+                return
+        _LOGGER.error("Could not find a room with name %s", room_name)
+
     async def set_room_temperatures(self, room_id, sleep_temp=None,
                                     comfort_temp=None, away_temp=None):
         """Set room temps."""
+        if sleep_temp is None and comfort_temp is None and away_temp is None:
+            return
         room = self.rooms.get(room_id)
         if room is None:
             _LOGGER.error("No such device")
             return
-        if sleep_temp is None:
-            sleep_temp = room.sleep_temp
-        if away_temp is None:
-            away_temp = room.away_temp
-        if comfort_temp is None:
-            comfort_temp = room.comfort_temp
+        room.sleep_temp = sleep_temp if sleep_temp else room.sleep_temp
+        room.away_temp = away_temp if away_temp else room.away_temp
+        room.comfort_temp = comfort_temp if comfort_temp else room.comfort_temp
         payload = {"roomId": room_id,
-                   "sleepTemp": sleep_temp,
-                   "comfortTemp": comfort_temp,
-                   "awayTemp": away_temp,
+                   "sleepTemp": room.sleep_temp,
+                   "comfortTemp": room.comfort_temp,
+                   "awayTemp": room.away_temp,
                    "homeType": 0}
-        await self.request("/changeRoomModeTempInfo", payload)
-
-    def sync_set_room_temperatures(self, room_id, sleep_temp=None,
-                                   comfort_temp=None, away_temp=None):
-        """Set heater temps."""
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(self.set_room_temperatures(room_id,
-                                                           sleep_temp,
-                                                           comfort_temp,
-                                                           away_temp))
-        return loop.run_until_complete(task)
+        res = await self.request("/changeRoomModeTempInfo", payload)
+        print(res)
+        self.rooms[room_id] = room
 
     async def update_heaters(self):
         """Request data."""
         homes = await self.get_home_list()
-        if homes is None:
-            return None
         for home in homes:
             payload = {"homeId": home.get("homeId")}
             data = await self.request("/getIndependentDevices", payload)
-            heaters = data.get('deviceInfo', [])
-            if not heaters:
+            heater_data = data.get('deviceInfo', [])
+            if not heater_data:
                 continue
-            for _heater in heaters:
+            for _heater in heater_data:
                 _id = _heater.get('deviceId')
                 heater = self.heaters.get(_id, Heater())
                 heater.device_id = _id
-                heater.current_temp = _heater.get('currentTemp')
-                heater.device_status = _heater.get('deviceStatus')
-                heater.name = _heater.get('deviceName')
-                heater.fan_status = _heater.get('fanStatus')
-                heater.set_temp = _heater.get('holidayTemp')
-                heater.power_status = _heater.get('powerStatus')
-
+                await set_heater_values(_heater, heater)
                 self.heaters[_id] = heater
 
         for _id, heater in self.heaters.items():
@@ -293,12 +289,7 @@ class Mill:
             _heater = await self.request("/selectDevice", payload)
             if _heater is None:
                 continue
-            heater.current_temp = _heater.get('currentTemp')
-            heater.device_status = _heater.get('deviceStatus')
-            heater.name = _heater.get('deviceName')
-            heater.fan_status = _heater.get('fanStatus')
-            heater.set_temp = _heater.get('holidayTemp')
-            heater.power_status = _heater.get('powerStatus')
+            await set_heater_values(_heater, heater)
             self.heaters[_id] = heater
 
     def sync_update_heaters(self):
@@ -367,6 +358,11 @@ class Mill:
         task = loop.create_task(self.set_heater_temp(device_id, set_temp))
         loop.run_until_complete(task)
 
+    async def find_all_heaters(self):
+        """Find all heaters."""
+        await self.update_rooms()
+        await self.update_heaters()
+
 
 class Room:
     """Representation of room."""
@@ -379,6 +375,7 @@ class Room:
     sleep_temp = None
     is_offline = None
     heat_status = None
+    home_name = None
 
     def __repr__(self):
         return 'Room(name={}, room_id={},' \
@@ -399,6 +396,9 @@ class Heater:
     fan_status = None
     power_status = None
     independent_device = True
+    room = None
+    open_window = None
+    is_heating = None
 
     def __repr__(self):
         return 'Heater(name={}, device_id={},' \
@@ -407,3 +407,19 @@ class Heater:
                                                        self.current_temp,
                                                        self.set_temp
                                                        )
+
+
+async def set_heater_values(heater_data, heater):
+    """Set heater values from heater data"""
+    heater.current_temp = heater_data.get('currentTemp')
+    heater.device_status = heater_data.get('deviceStatus')
+    heater.name = heater_data.get('deviceName')
+    heater.fan_status = heater_data.get('fanStatus')
+    heater.set_temp = heater_data.get('holidayTemp')
+    heater.power_status = heater_data.get('powerStatus')
+    heater.open_window = heater_data.get('open_window',
+                                         heater_data.get('open')
+                                         )
+    heater.is_heating = heater_data.get('heatStatus',
+                                        heater_data.get('heaterFlag')
+                                        )
