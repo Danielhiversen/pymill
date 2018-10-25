@@ -117,7 +117,7 @@ class Mill:
 
         if self._token is None:
             _LOGGER.error("No token")
-            return
+            return None
 
         _LOGGER.debug(payload)
 
@@ -238,16 +238,20 @@ class Mill:
     async def set_room_temperatures_by_name(self, room_name, sleep_temp=None,
                                             comfort_temp=None, away_temp=None):
         """Set room temps by name."""
-        for _room in self.rooms:
-            if room_name != _room.name:
-                continue
-            await self.set_room_temperatures(_room.room_id, sleep_temp, comfort_temp, away_temp)
+        if sleep_temp is None and comfort_temp is None and away_temp is None:
             return
-        _LOGGER.error("No room with name %s found", room_name)
+        for room_id, _room in self.rooms.items():
+            if _room.name == room_name:
+                await self.set_room_temperatures(room_id, sleep_temp,
+                                                 comfort_temp, away_temp)
+                return
+        _LOGGER.error("Could not find a room with name %s", room_name)
 
     async def set_room_temperatures(self, room_id, sleep_temp=None,
                                     comfort_temp=None, away_temp=None):
         """Set room temps."""
+        if sleep_temp is None and comfort_temp is None and away_temp is None:
+            return
         room = self.rooms.get(room_id)
         if room is None:
             _LOGGER.error("No such device")
@@ -260,18 +264,9 @@ class Mill:
                    "comfortTemp": room.comfort_temp,
                    "awayTemp": room.away_temp,
                    "homeType": 0}
-        await self.request("/changeRoomModeTempInfo", payload)
+        res = await self.request("/changeRoomModeTempInfo", payload)
+        print(res)
         self.rooms[room_id] = room
-
-    def sync_set_room_temperatures(self, room_id, sleep_temp=None,
-                                   comfort_temp=None, away_temp=None):
-        """Set heater temps."""
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(self.set_room_temperatures(room_id,
-                                                           sleep_temp,
-                                                           comfort_temp,
-                                                           away_temp))
-        return loop.run_until_complete(task)
 
     async def update_heaters(self):
         """Request data."""
@@ -279,20 +274,14 @@ class Mill:
         for home in homes:
             payload = {"homeId": home.get("homeId")}
             data = await self.request("/getIndependentDevices", payload)
-            heaters = data.get('deviceInfo', [])
-            if not heaters:
+            heater_data = data.get('deviceInfo', [])
+            if not heater_data:
                 continue
-            for _heater in heaters:
+            for _heater in heater_data:
                 _id = _heater.get('deviceId')
                 heater = self.heaters.get(_id, Heater())
                 heater.device_id = _id
-                heater.current_temp = _heater.get('currentTemp')
-                heater.device_status = _heater.get('deviceStatus')
-                heater.name = _heater.get('deviceName')
-                heater.fan_status = _heater.get('fanStatus')
-                heater.set_temp = _heater.get('holidayTemp')
-                heater.power_status = _heater.get('powerStatus')
-
+                await set_heater_values(_heater, heater)
                 self.heaters[_id] = heater
 
         for _id, heater in self.heaters.items():
@@ -302,12 +291,7 @@ class Mill:
             _heater = await self.request("/selectDevice", payload)
             if _heater is None:
                 continue
-            heater.current_temp = _heater.get('currentTemp')
-            heater.device_status = _heater.get('deviceStatus')
-            heater.name = _heater.get('deviceName')
-            heater.fan_status = _heater.get('fanStatus')
-            heater.set_temp = _heater.get('holidayTemp')
-            heater.power_status = _heater.get('powerStatus')
+            await set_heater_values(_heater, heater)
             self.heaters[_id] = heater
 
     def sync_update_heaters(self):
@@ -415,6 +399,8 @@ class Heater:
     power_status = None
     independent_device = True
     room = None
+    open_window = None
+    is_heating = None
 
     def __repr__(self):
         return 'Heater(name={}, device_id={},' \
@@ -423,3 +409,14 @@ class Heater:
                                                        self.current_temp,
                                                        self.set_temp
                                                        )
+
+
+async def set_heater_values(heater_data, heater):
+    heater.current_temp = heater_data.get('currentTemp')
+    heater.device_status = heater_data.get('deviceStatus')
+    heater.name = heater_data.get('deviceName')
+    heater.fan_status = heater_data.get('fanStatus')
+    heater.set_temp = heater_data.get('holidayTemp')
+    heater.power_status = heater_data.get('powerStatus')
+    heater.open_window = heater_data.get('open_window')
+    heater.is_heating = heater_data.get('heatStatus')
