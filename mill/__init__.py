@@ -13,7 +13,6 @@ import time
 import aiohttp
 import async_timeout
 
-
 API_ENDPOINT_1 = 'https://eurouter.ablecloud.cn:9005/zc-account/v1'
 API_ENDPOINT_2 = 'http://eurouter.ablecloud.cn:5000/millService/v1'
 DEFAULT_TIMEOUT = 10
@@ -177,7 +176,6 @@ class Mill:
         if 'errorCode' in result:
             _LOGGER.error("Failed to send request, %s", result)
             return None
-
         data = json.loads(result)
         return data
 
@@ -419,5 +417,9 @@ async def set_heater_values(heater_data, heater):
     heater.fan_status = heater_data.get('fanStatus')
     heater.set_temp = heater_data.get('holidayTemp')
     heater.power_status = heater_data.get('powerStatus')
-    heater.open_window = heater_data.get('open_window')
-    heater.is_heating = heater_data.get('heatStatus')
+    heater.open_window = heater_data.get('open_window',
+                                         heater_data.get('open')
+                                         )
+    heater.is_heating = heater_data.get('heatStatus',
+                                        heater_data.get('heaterFlag')
+                                        )
