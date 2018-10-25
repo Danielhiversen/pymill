@@ -412,6 +412,7 @@ class Heater:
 
 
 async def set_heater_values(heater_data, heater):
+    """Set heater values from heater data"""
     heater.current_temp = heater_data.get('currentTemp')
     heater.device_status = heater_data.get('deviceStatus')
     heater.name = heater_data.get('deviceName')
