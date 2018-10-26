@@ -13,8 +13,8 @@ import time
 import aiohttp
 import async_timeout
 
-API_ENDPOINT_1 = 'https://eurouter.ablecloud.cn:9005/zc-account/v1'
-API_ENDPOINT_2 = 'http://eurouter.ablecloud.cn:5000/millService/v1'
+API_ENDPOINT_1 = 'https://eurouter.ablecloud.cn:9005/zc-account/v1/'
+API_ENDPOINT_2 = 'http://eurouter.ablecloud.cn:5000/millService/v1/'
 DEFAULT_TIMEOUT = 10
 MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=10)
 REQUEST_TIMEOUT = '300'
@@ -49,7 +49,7 @@ class Mill:
 
     async def connect(self):
         """Connect to Mill."""
-        url = API_ENDPOINT_1 + '/login'
+        url = API_ENDPOINT_1 + 'login'
         headers = {
             "Content-Type": "application/x-zc-object",
             "Connection": "Keep-Alive",
@@ -187,7 +187,7 @@ class Mill:
 
     async def get_home_list(self):
         """Request data."""
-        resp = await self.request("/selectHomeList", "{}")
+        resp = await self.request("selectHomeList", "{}")
         if resp is None:
             return []
         return resp.get('homeList', [])
@@ -197,7 +197,7 @@ class Mill:
         homes = await self.get_home_list()
         for home in homes:
             payload = {"homeId": home.get("homeId"), "timeZoneNum": "+01:00"}
-            data = await self.request("/selectRoombyHome", payload)
+            data = await self.request("selectRoombyHome", payload)
             rooms = data.get('roomInfo', [])
             for _room in rooms:
                 _id = _room.get('roomId')
@@ -213,7 +213,7 @@ class Mill:
 
                 self.rooms[_id] = room
                 payload = {"roomId": _room.get("roomId"), "timeZoneNum": "+01:00"}
-                room_device = await self.request("/selectDevicebyRoom", payload)
+                room_device = await self.request("selectDevicebyRoom", payload)
 
                 if room_device is None:
                     continue
@@ -262,7 +262,7 @@ class Mill:
                    "comfortTemp": room.comfort_temp,
                    "awayTemp": room.away_temp,
                    "homeType": 0}
-        res = await self.request("/changeRoomModeTempInfo", payload)
+        res = await self.request("changeRoomModeTempInfo", payload)
         print(res)
         self.rooms[room_id] = room
 
@@ -271,7 +271,7 @@ class Mill:
         homes = await self.get_home_list()
         for home in homes:
             payload = {"homeId": home.get("homeId")}
-            data = await self.request("/getIndependentDevices", payload)
+            data = await self.request("getIndependentDevices", payload)
             heater_data = data.get('deviceInfo', [])
             if not heater_data:
                 continue
@@ -286,7 +286,7 @@ class Mill:
             if heater.independent_device:
                 continue
             payload = {"deviceId": _id}
-            _heater = await self.request("/selectDevice", payload)
+            _heater = await self.request("selectDevice", payload)
             if _heater is None:
                 continue
             await set_heater_values(_heater, heater)
@@ -332,7 +332,7 @@ class Mill:
                    "holdTemp": heater.set_temp,
                    "tempType": 0,
                    "powerLevel": 0}
-        await self.request("/deviceControl", payload)
+        await self.request("deviceControl", payload)
 
     def sync_heater_control(self, device_id, fan_status=None,
                             power_status=None):
@@ -350,7 +350,7 @@ class Mill:
                    "deviceId": device_id,
                    "value": int(set_temp),
                    "key": "holidayTemp"}
-        await self.request("/changeDeviceInfo", payload)
+        await self.request("changeDeviceInfo", payload)
 
     def sync_set_heater_temp(self, device_id, set_temp):
         """Set heater temps."""
@@ -399,6 +399,7 @@ class Heater:
     room = None
     open_window = None
     is_heating = None
+    tibber_control = None
 
     def __repr__(self):
         return 'Heater(name={}, device_id={},' \
@@ -417,6 +418,7 @@ async def set_heater_values(heater_data, heater):
     heater.fan_status = heater_data.get('fanStatus')
     heater.set_temp = heater_data.get('holidayTemp')
     heater.power_status = heater_data.get('powerStatus')
+    heater.tibber_control = heater_data.get('tibberControl')
     heater.open_window = heater_data.get('open_window',
                                          heater_data.get('open')
                                          )
