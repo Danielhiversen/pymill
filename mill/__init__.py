@@ -210,6 +210,7 @@ class Mill:
                 room.current_mode = _room.get("currentMode")
                 room.heat_status = _room.get("heatStatus")
                 room.home_name = _room.get("homeName")
+                room.avg_temp = _room.get("avgTemp")
 
                 self.rooms[_id] = room
                 payload = {"roomId": _room.get("roomId"), "timeZoneNum": "+01:00"}
@@ -376,14 +377,18 @@ class Room:
     is_offline = None
     heat_status = None
     home_name = None
+    avg_temp = None # current temperature in the room
+    current_mode = None
 
     def __repr__(self):
         return 'Room(name={}, room_id={},' \
-               ' comfort_temp={}, away_temp={})'.format(self.name,
-                                                        self.room_id,
-                                                        self.comfort_temp,
-                                                        self.away_temp
-                                                        )
+               ' comfort_temp={}, away_temp={}, avg_temp={}, current_mode={})'.format(self.name,
+                                                                                      self.room_id,
+                                                                                      self.comfort_temp,
+                                                                                      self.away_temp,
+                                                                                      self.avg_temp,
+                                                                                      self.current_mode
+                                                                                      )
 
 
 class Heater:
