@@ -377,7 +377,7 @@ class Room:
     is_offline = None
     heat_status = None
     home_name = None
-    avg_temp = None # current temperature in the room
+    avg_temp = None  # current temperature in the room
     current_mode = None
 
     def __repr__(self):
