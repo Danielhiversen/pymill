@@ -382,13 +382,14 @@ class Room:
 
     def __repr__(self):
         return 'Room(name={}, room_id={},' \
-               ' comfort_temp={}, away_temp={}, avg_temp={}, current_mode={})'.format(self.name,
-                                                                                      self.room_id,
-                                                                                      self.comfort_temp,
-                                                                                      self.away_temp,
-                                                                                      self.avg_temp,
-                                                                                      self.current_mode
-                                                                                      )
+               ' comfort_temp={}, away_temp={},' \
+               ' avg_temp={}, current_mode={})'.format(self.name,
+                                                       self.room_id,
+                                                       self.comfort_temp,
+                                                       self.away_temp,
+                                                       self.avg_temp,
+                                                       self.current_mode
+                                                       )
 
 
 class Heater:
