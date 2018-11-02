@@ -1,6 +1,7 @@
 # pymill [![Build Status](https://travis-ci.org/Danielhiversen/pymill.svg?branch=master)](https://travis-ci.org/Danielhiversen/pymill)
 
-Python3 library for Mill.
+Python3 library for Mill heater. The library uses the app API.
+
 Based on https://pastebin.com/53Nk0wJA and Postman capturing from the app.
 All requests are send unencrypted from the app :(
 
