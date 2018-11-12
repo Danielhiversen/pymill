@@ -408,6 +408,10 @@ class Heater:
     tibber_control = None
     sub_domain = 5332
 
+    @property
+    def is_gen1(self):
+        return self.sub_domain in [863, ]
+
     def __repr__(self):
         return 'Heater(name={}, device_id={},' \
                ' current_temp={}, set_temp={})'.format(self.name,
