@@ -324,7 +324,7 @@ class Mill:
         if power_status is None:
             power_status = heater.power_status
         operation = 0 if fan_status == heater.fan_status else 4
-        payload = {"subDomain": 5332,
+        payload = {"subDomain":  heater.sub_domain,
                    "deviceId": device_id,
                    "testStatus": 1,
                    "operation": operation,
@@ -406,6 +406,7 @@ class Heater:
     open_window = None
     is_heating = None
     tibber_control = None
+    sub_domain = 5332
 
     def __repr__(self):
         return 'Heater(name={}, device_id={},' \
@@ -431,3 +432,5 @@ async def set_heater_values(heater_data, heater):
     heater.is_heating = heater_data.get('heatStatus',
                                         heater_data.get('heaterFlag')
                                         )
+    heater.sub_domain = heater_data.get('subDomain',
+                                        heater.sub_domain)
