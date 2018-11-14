@@ -171,6 +171,7 @@ class Mill:
                 _LOGGER.error("Failed to send request, %s", result)
                 return None
             _LOGGER.error("Failed to send request, %s. Retrying...", result)
+            await asyncio.sleep(3)
             return await self.request(command, payload, retry-1)
 
         if 'errorCode' in result:
