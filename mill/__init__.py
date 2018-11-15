@@ -441,4 +441,4 @@ async def set_heater_values(heater_data, heater):
     heater.sub_domain = heater_data.get('subDomain',
                                         heater_data.get('subDomainId',
                                                         heater.sub_domain)
-                                       )
+                                        )
