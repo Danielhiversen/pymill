@@ -19,12 +19,12 @@ DEFAULT_TIMEOUT = 10
 MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=10)
 REQUEST_TIMEOUT = '300'
 
-
 _LOGGER = logging.getLogger(__name__)
 
 
 class Mill:
     """Class to comunicate with the Mill api."""
+
     # pylint: disable=too-many-instance-attributes, too-many-public-methods
 
     def __init__(self, username, password,
@@ -34,6 +34,7 @@ class Mill:
         if websession is None:
             async def _create_session():
                 return aiohttp.ClientSession()
+
             loop = asyncio.get_event_loop()
             self.websession = loop.run_until_complete(_create_session())
         else:
@@ -164,7 +165,7 @@ class Mill:
                 return None
             if not await self.connect():
                 return None
-            return await self.request(command, payload, retry-1)
+            return await self.request(command, payload, retry - 1)
 
         if '"error":"device offline"' in result:
             if retry < 1:
@@ -172,7 +173,7 @@ class Mill:
                 return None
             _LOGGER.error("Failed to send request, %s. Retrying...", result)
             await asyncio.sleep(3)
-            return await self.request(command, payload, retry-1)
+            return await self.request(command, payload, retry - 1)
 
         if 'errorCode' in result:
             _LOGGER.error("Failed to send request, %s", result)
@@ -325,7 +326,7 @@ class Mill:
         if power_status is None:
             power_status = heater.power_status
         operation = 0 if fan_status == heater.fan_status else 4
-        payload = {"subDomain":  heater.sub_domain,
+        payload = {"subDomain": heater.sub_domain,
                    "deviceId": device_id,
                    "testStatus": 1,
                    "operation": operation,
@@ -438,7 +439,10 @@ async def set_heater_values(heater_data, heater):
     heater.is_heating = heater_data.get('heatStatus',
                                         heater_data.get('heaterFlag')
                                         )
-    heater.sub_domain = heater_data.get('subDomain',
-                                        heater_data.get('subDomainId',
-                                                        heater.sub_domain)
-                                        )
+    try:
+        heater.sub_domain = int(float(heater_data.get('subDomain',
+                                                      heater_data.get('subDomainId',
+                                                                      heater.sub_domain)
+                                                      )))
+    except ValueError:
+        pass
