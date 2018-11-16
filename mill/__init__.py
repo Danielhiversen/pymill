@@ -438,7 +438,10 @@ async def set_heater_values(heater_data, heater):
     heater.is_heating = heater_data.get('heatStatus',
                                         heater_data.get('heaterFlag')
                                         )
-    heater.sub_domain = heater_data.get('subDomain',
-                                        heater_data.get('subDomainId',
-                                                        heater.sub_domain)
-                                        )
+    try:
+        heater.sub_domain = int(float(heater_data.get('subDomain',
+                                            heater_data.get('subDomainId',
+                                                            heater.sub_domain)
+                                            )))
+    except ValueError:
+        pass
