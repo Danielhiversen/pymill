@@ -291,6 +291,7 @@ class Mill:
             payload = {"deviceId": _id}
             _heater = await self.request("selectDevice", payload)
             if _heater is None:
+                self.heaters[_id].available = False
                 continue
             await set_heater_values(_heater, heater)
             self.heaters[_id] = heater
@@ -409,6 +410,7 @@ class Heater:
     is_heating = None
     tibber_control = None
     sub_domain = 5332
+    available = False
 
     @property
     def is_gen1(self):
@@ -428,6 +430,7 @@ async def set_heater_values(heater_data, heater):
     """Set heater values from heater data"""
     heater.current_temp = heater_data.get('currentTemp')
     heater.device_status = heater_data.get('deviceStatus')
+    heater.available = heater.device_status == 0
     heater.name = heater_data.get('deviceName')
     heater.fan_status = heater_data.get('fanStatus')
     heater.set_temp = heater_data.get('holidayTemp')
