@@ -160,7 +160,7 @@ class Mill:
         if not result or result == '{"errorCode":0}':
             return None
 
-        if 'access token expire' in result:
+        if 'access token expire' in result or 'invalid signature' in result:
             if retry < 1:
                 return None
             if not await self.connect():
