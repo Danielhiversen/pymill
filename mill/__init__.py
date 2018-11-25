@@ -275,6 +275,8 @@ class Mill:
         for home in homes:
             payload = {"homeId": home.get("homeId")}
             data = await self.request("getIndependentDevices", payload)
+            if data is None:
+                continue
             heater_data = data.get('deviceInfo', [])
             if not heater_data:
                 continue
