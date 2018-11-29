@@ -386,15 +386,8 @@ class Room:
     current_mode = None
 
     def __repr__(self):
-        return 'Room(name={}, room_id={},' \
-               ' comfort_temp={}, away_temp={},' \
-               ' avg_temp={}, current_mode={})'.format(self.name,
-                                                       self.room_id,
-                                                       self.comfort_temp,
-                                                       self.away_temp,
-                                                       self.avg_temp,
-                                                       self.current_mode
-                                                       )
+        items = ("%s=%r" % (k, v) for k, v in self.__dict__.items())
+        return "%s(%s)" % (self.__class__.__name__, ', '.join(items))
 
 
 class Heater:
@@ -420,12 +413,8 @@ class Heater:
         return self.sub_domain in [863, ]
 
     def __repr__(self):
-        return 'Heater(name={}, device_id={},' \
-               ' current_temp={}, set_temp={})'.format(self.name,
-                                                       self.device_id,
-                                                       self.current_temp,
-                                                       self.set_temp
-                                                       )
+        items = ("%s=%r" % (k, v) for k, v in self.__dict__.items())
+        return "%s(%s)" % (self.__class__.__name__, ', '.join(items))
 
 
 async def set_heater_values(heater_data, heater):
