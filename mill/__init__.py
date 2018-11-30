@@ -211,7 +211,7 @@ class Mill:
                 room.name = _room.get("roomName")
                 room.current_mode = _room.get("currentMode")
                 room.heat_status = _room.get("heatStatus")
-                room.home_name = _room.get("homeName")
+                room.home_name = data.get("homeName")
                 room.avg_temp = _room.get("avgTemp")
 
                 self.rooms[_id] = room
