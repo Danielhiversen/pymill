@@ -424,7 +424,15 @@ async def set_heater_values(heater_data, heater):
     heater.available = heater.device_status == 0
     heater.name = heater_data.get('deviceName')
     heater.fan_status = heater_data.get('fanStatus')
-    heater.set_temp = heater_data.get('holidayTemp')
+    if heater.independent_device:
+        heater.set_temp = heater_data.get('holidayTemp')
+    else:
+        if heater.room.current_mode == 1:
+            heater.set_temp = heater.room.comfort_temp
+        elif heater.room.current_mode == 2:
+            heater.set_temp = heater.room.sleep_temp
+        elif heater.room.current_mode == 3:
+            heater.set_temp = heater.room.away_temp
     heater.power_status = heater_data.get('powerStatus')
     heater.tibber_control = heater_data.get('tibberControl')
     heater.open_window = heater_data.get('open_window',
