@@ -427,11 +427,12 @@ async def set_heater_values(heater_data, heater):
     heater.fan_status = heater_data.get('fanStatus')
     heater.is_holiday = heater_data.get('isHoliday')
 
-    # Independent devices report their target temperature via holidayTemp value.
-    # But isHoliday is still set to 0.
+    # Independent devices report their target temperature via
+    # holidayTemp value. But isHoliday is still set to 0.
     # Room assigned devices may have set "Control Device individually"
     # which effectively set their isHoliday value to 1.
-    # In this mode they behave similar to independent devices.
+    # In this mode they behave similar to independent devices
+    # reporting their target temperature also via holidayTemp.
     if heater.independent_device or heater.is_holiday == 1:
         heater.set_temp = heater_data.get('holidayTemp')
     elif heater.room is not None:
