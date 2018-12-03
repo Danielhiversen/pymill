@@ -406,6 +406,7 @@ class Heater:
     tibber_control = None
     sub_domain = 5332
     available = False
+    is_holiday = None
 
     @property
     def is_gen1(self):
@@ -424,7 +425,23 @@ async def set_heater_values(heater_data, heater):
     heater.available = heater.device_status == 0
     heater.name = heater_data.get('deviceName')
     heater.fan_status = heater_data.get('fanStatus')
-    heater.set_temp = heater_data.get('holidayTemp')
+    heater.is_holiday = heater_data.get('isHoliday')
+
+    # Independent devices report their target temperature via
+    # holidayTemp value. But isHoliday is still set to 0.
+    # Room assigned devices may have set "Control Device individually"
+    # which effectively set their isHoliday value to 1.
+    # In this mode they behave similar to independent devices
+    # reporting their target temperature also via holidayTemp.
+    if heater.independent_device or heater.is_holiday == 1:
+        heater.set_temp = heater_data.get('holidayTemp')
+    elif heater.room is not None:
+        if heater.room.current_mode == 1:
+            heater.set_temp = heater.room.comfort_temp
+        elif heater.room.current_mode == 2:
+            heater.set_temp = heater.room.sleep_temp
+        elif heater.room.current_mode == 3:
+            heater.set_temp = heater.room.away_temp
     heater.power_status = heater_data.get('powerStatus')
     heater.tibber_control = heater_data.get('tibberControl')
     heater.open_window = heater_data.get('open_window',
