@@ -14,7 +14,7 @@ import aiohttp
 import async_timeout
 
 API_ENDPOINT_1 = 'https://eurouter.ablecloud.cn:9005/zc-account/v1/'
-API_ENDPOINT_2 = 'http://eurouter.ablecloud.cn:5000/millService/v1/'
+API_ENDPOINT_2 = 'https://eurouter.ablecloud.cn:9005/millService/v1/'
 DEFAULT_TIMEOUT = 10
 MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=10)
 REQUEST_TIMEOUT = '300'
