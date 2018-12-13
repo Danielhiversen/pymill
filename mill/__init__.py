@@ -16,7 +16,7 @@ import async_timeout
 API_ENDPOINT_1 = 'https://eurouter.ablecloud.cn:9005/zc-account/v1/'
 API_ENDPOINT_2 = 'https://eurouter.ablecloud.cn:9005/millService/v1/'
 DEFAULT_TIMEOUT = 10
-MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=10)
+MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=5)
 REQUEST_TIMEOUT = '300'
 
 _LOGGER = logging.getLogger(__name__)
@@ -148,7 +148,7 @@ class Mill:
             with async_timeout.timeout(self._timeout):
                 resp = await self.websession.post(url,
                                                   data=json.dumps(payload),
-                                                  headers=headers)             
+                                                  headers=headers)
         except asyncio.TimeoutError:
             if retry < 1:
                 _LOGGER.error("Timed out sending command to Mill: %s", command, exc_info=True)
