@@ -48,7 +48,7 @@ class Mill:
         self.heaters = {}
         self._throttle_time = None
 
-    async def connect(self):
+    async def connect(self, retry=2):
         """Connect to Mill."""
         url = API_ENDPOINT_1 + 'login'
         headers = {
@@ -68,8 +68,10 @@ class Mill:
                                                   data=json.dumps(payload),
                                                   headers=headers)
         except (asyncio.TimeoutError, aiohttp.ClientError):
-            _LOGGER.error("Error connecting to Mill", exc_info=True)
-            return False
+            if retry < 1:
+                _LOGGER.error("Error connecting to Mill", exc_info=True)
+                return False
+            return await self.connect(retry - 1)
 
         result = await resp.text()
         if '"errorCode":3504' in result:
@@ -151,7 +153,7 @@ class Mill:
                                                   headers=headers)
         except asyncio.TimeoutError:
             if retry < 1:
-                _LOGGER.error("Timed out sending command to Mill: %s", command, exc_info=True)
+                _LOGGER.error("Timed out sending command to Mill: %s", command)
                 return None
             return await self.request(command, payload, retry - 1)
         except aiohttp.ClientError:
