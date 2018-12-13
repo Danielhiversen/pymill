@@ -147,9 +147,14 @@ class Mill:
         try:
             with async_timeout.timeout(self._timeout):
                 resp = await self.websession.post(url,
-                                                  data=json.dumps(payload),
-                                                  headers=headers)
-        except (asyncio.TimeoutError, aiohttp.ClientError):
+                                                  data=json.dumps(payload),                                                     headers=headers)
+                                                  headers=headers)                
+        except asyncio.TimeoutError:
+            if retry < 1:
+                _LOGGER.error("Timed out sending command to Mill: %s", command, exc_info=True)
+                return None
+            return await self.request(command, payload, retry - 1)
+        except aiohttp.ClientError:
             _LOGGER.error("Error sending command to Mill: %s", command, exc_info=True)
             return None
 
@@ -158,6 +163,7 @@ class Mill:
         _LOGGER.debug(result)
 
         if not result or result == '{"errorCode":0}':
+            _LOGGER.error("Failed to send request, %s", result)
             return None
 
         if 'access token expire' in result or 'invalid signature' in result:
