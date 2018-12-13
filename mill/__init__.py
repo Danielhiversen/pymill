@@ -50,6 +50,7 @@ class Mill:
 
     async def connect(self, retry=2):
         """Connect to Mill."""
+        # pylint: disable=too-many-return-statements
         url = API_ENDPOINT_1 + 'login'
         headers = {
             "Content-Type": "application/x-zc-object",
