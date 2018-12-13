@@ -147,8 +147,8 @@ class Mill:
         try:
             with async_timeout.timeout(self._timeout):
                 resp = await self.websession.post(url,
-                                                  data=json.dumps(payload),                                                     headers=headers)
-                                                  headers=headers)                
+                                                  data=json.dumps(payload),
+                                                  headers=headers)             
         except asyncio.TimeoutError:
             if retry < 1:
                 _LOGGER.error("Timed out sending command to Mill: %s", command, exc_info=True)
