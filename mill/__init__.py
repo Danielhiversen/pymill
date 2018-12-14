@@ -16,7 +16,7 @@ import async_timeout
 API_ENDPOINT_1 = 'https://eurouter.ablecloud.cn:9005/zc-account/v1/'
 API_ENDPOINT_2 = 'https://eurouter.ablecloud.cn:9005/millService/v1/'
 DEFAULT_TIMEOUT = 10
-MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=10)
+MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=5)
 REQUEST_TIMEOUT = '300'
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,8 +48,9 @@ class Mill:
         self.heaters = {}
         self._throttle_time = None
 
-    async def connect(self):
+    async def connect(self, retry=2):
         """Connect to Mill."""
+        # pylint: disable=too-many-return-statements
         url = API_ENDPOINT_1 + 'login'
         headers = {
             "Content-Type": "application/x-zc-object",
@@ -68,8 +69,10 @@ class Mill:
                                                   data=json.dumps(payload),
                                                   headers=headers)
         except (asyncio.TimeoutError, aiohttp.ClientError):
-            _LOGGER.error("Error connecting to Mill", exc_info=True)
-            return False
+            if retry < 1:
+                _LOGGER.error("Error connecting to Mill", exc_info=True)
+                return False
+            return await self.connect(retry - 1)
 
         result = await resp.text()
         if '"errorCode":3504' in result:
@@ -149,7 +152,12 @@ class Mill:
                 resp = await self.websession.post(url,
                                                   data=json.dumps(payload),
                                                   headers=headers)
-        except (asyncio.TimeoutError, aiohttp.ClientError):
+        except asyncio.TimeoutError:
+            if retry < 1:
+                _LOGGER.error("Timed out sending command to Mill: %s", command)
+                return None
+            return await self.request(command, payload, retry - 1)
+        except aiohttp.ClientError:
             _LOGGER.error("Error sending command to Mill: %s", command, exc_info=True)
             return None
 
@@ -158,6 +166,7 @@ class Mill:
         _LOGGER.debug(result)
 
         if not result or result == '{"errorCode":0}':
+            _LOGGER.error("Failed to send request, %s", result)
             return None
 
         if 'access token expire' in result or 'invalid signature' in result:
