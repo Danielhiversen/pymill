@@ -166,7 +166,6 @@ class Mill:
         _LOGGER.debug(result)
 
         if not result or result == '{"errorCode":0}':
-            _LOGGER.error("Failed to send request, %s", result)
             return None
 
         if 'access token expire' in result or 'invalid signature' in result:
@@ -275,7 +274,6 @@ class Mill:
                    "awayTemp": room.away_temp,
                    "homeType": 0}
         res = await self.request("changeRoomModeTempInfo", payload)
-        print(res)
         self.rooms[room_id] = room
 
     async def update_heaters(self):
