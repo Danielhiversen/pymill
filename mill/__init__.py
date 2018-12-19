@@ -273,7 +273,7 @@ class Mill:
                    "comfortTemp": room.comfort_temp,
                    "awayTemp": room.away_temp,
                    "homeType": 0}
-        res = await self.request("changeRoomModeTempInfo", payload)
+        await self.request("changeRoomModeTempInfo", payload)
         self.rooms[room_id] = room
 
     async def update_heaters(self):
