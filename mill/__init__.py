@@ -16,7 +16,7 @@ import async_timeout
 API_ENDPOINT_1 = 'https://eurouter.ablecloud.cn:9005/zc-account/v1/'
 API_ENDPOINT_2 = 'https://eurouter.ablecloud.cn:9005/millService/v1/'
 DEFAULT_TIMEOUT = 10
-MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=5)
+MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=2)
 REQUEST_TIMEOUT = '300'
 
 _LOGGER = logging.getLogger(__name__)
@@ -114,7 +114,7 @@ class Mill:
         task = loop.create_task(self.close_connection())
         loop.run_until_complete(task)
 
-    async def request(self, command, payload, retry=2):
+    async def request(self, command, payload, retry=3):
         """Request data."""
         # pylint: disable=too-many-return-statements
 
@@ -179,7 +179,7 @@ class Mill:
             if retry < 1:
                 _LOGGER.error("Failed to send request, %s", result)
                 return None
-            _LOGGER.error("Failed to send request, %s. Retrying...", result)
+            _LOGGER.debug("Failed to send request, %s. Retrying...", result)
             await asyncio.sleep(3)
             return await self.request(command, payload, retry - 1)
 
