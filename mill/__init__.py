@@ -324,7 +324,8 @@ class Mill:
     async def throttle_update_all_heaters(self):
         """Throttle update all devices and rooms."""
         if (self._throttle_all_time is not None
-                and dt.datetime.now() - self._throttle_all_time < MIN_TIME_BETWEEN_UPDATES):
+                and dt.datetime.now() - self._throttle_all_time
+                < MIN_TIME_BETWEEN_UPDATES):
             return
         self._throttle_all_time = dt.datetime.now()
         await self.find_all_heaters()
