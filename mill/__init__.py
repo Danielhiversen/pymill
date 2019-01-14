@@ -47,6 +47,7 @@ class Mill:
         self.rooms = {}
         self.heaters = {}
         self._throttle_time = None
+        self._throttle_all_time = None
 
     async def connect(self, retry=2):
         """Connect to Mill."""
@@ -234,6 +235,7 @@ class Mill:
                     heater = self.heaters.get(_id, Heater())
                     heater.device_id = _id
                     heater.independent_device = False
+                    heater.can_change_temp = _heater.get('canChangeTemp')
                     heater.name = _heater.get('deviceName')
                     heater.room = room
                     self.heaters[_id] = heater
@@ -319,10 +321,24 @@ class Mill:
         self._throttle_time = dt.datetime.now()
         await self.update_heaters()
 
+    async def throttle_update_all_heaters(self):
+        """Throttle update all devices and rooms."""
+        if (self._throttle_all_time is not None
+                and dt.datetime.now() - self._throttle_all_time
+                < MIN_TIME_BETWEEN_UPDATES):
+            return
+        self._throttle_all_time = dt.datetime.now()
+        await self.find_all_heaters()
+
     async def update_device(self, device_id):
         """Update device."""
         await self.throttle_update_heaters()
         return self.heaters.get(device_id)
+
+    async def update_room(self, room_id):
+        """Update room."""
+        await self.throttle_update_all_heaters()
+        return self.rooms.get(room_id)
 
     async def heater_control(self, device_id, fan_status=None,
                              power_status=None):
@@ -414,6 +430,7 @@ class Heater:
     sub_domain = 5332
     available = False
     is_holiday = None
+    can_change_temp = 1
 
     @property
     def is_gen1(self):
@@ -433,6 +450,11 @@ async def set_heater_values(heater_data, heater):
     heater.name = heater_data.get('deviceName')
     heater.fan_status = heater_data.get('fanStatus')
     heater.is_holiday = heater_data.get('isHoliday')
+
+    # Room assigned devices don't report canChangeTemp
+    # in selectDevice response.
+    if heater.room is None:
+        heater.can_change_temp = heater_data.get('canChangeTemp')
 
     # Independent devices report their target temperature via
     # holidayTemp value. But isHoliday is still set to 0.
