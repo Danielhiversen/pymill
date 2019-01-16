@@ -3,7 +3,8 @@
 Python3 library for Mill heater. The library uses the app API.
 
 Based on https://pastebin.com/53Nk0wJA and Postman capturing from the app.
-All requests are send unencrypted from the app :(
+
+~~All requests are send unencrypted from the app :(~~ https://blog.roysolberg.com/2019/01/mill-heat
 
 Control Mill heaters and get measured temperatures.
 
