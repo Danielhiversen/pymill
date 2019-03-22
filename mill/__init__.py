@@ -123,7 +123,7 @@ class Mill:
             _LOGGER.error("No token")
             return None
 
-        _LOGGER.debug(payload)
+        _LOGGER.debug(command, payload)
 
         nonce = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(16))
         url = API_ENDPOINT_2 + command
