@@ -277,6 +277,14 @@ class Mill:
                    "homeType": 0}
         await self.request("changeRoomModeTempInfo", payload)
         self.rooms[room_id] = room
+        
+        """Update all heaters in this room - set to room control"""
+        for _id, heater in self.heaters.items():
+            if heater.room is None:
+                continue
+            if (heater.room.room_id != room_id):
+                continue
+            await self.set_heater_room_override(_id, 0)
 
     async def update_heaters(self):
         """Request data."""
@@ -380,7 +388,27 @@ class Mill:
                    "value": int(set_temp),
                    "key": "holidayTemp"}
         await self.request("changeDeviceInfo", payload)
+        heater = self.heaters.get(device_id)
+        heater.set_temp = set_temp
+        
+        """If heater is associated with a room override room settings"""
+        if heater.room is not None:
+            await self.set_heater_room_override(device_id, 1)
+        
 
+    async def set_heater_room_override(self, device_id, status):
+        """Set heater to status=0:room control or status=1:individual control."""
+        heater = self.heaters.get(device_id)
+        payload = {"status": status,
+                   "deviceId": device_id,
+                   "operation": 1,
+                   "holdTemp": heater.set_temp,
+                   "subDomain": heater.sub_domain,
+                   "holdMins": 0,
+                   "holdHours": 0}
+        await self.request("deviceControl", payload)
+
+        
     def sync_set_heater_temp(self, device_id, set_temp):
         """Set heater temps."""
         loop = asyncio.get_event_loop()
