@@ -288,7 +288,7 @@ class Mill:
         if mode is None:
             _LOGGER.error("Need to define mode 0 (normal), 1 (comfort), 2 (sleep), 3 (away)")
             return
-        
+
         room = self.rooms.get(room_id)
 
         if room is None:
@@ -296,9 +296,9 @@ class Mill:
             return
 
         room.backHour = hour
-        room.backMinute = minute     
+        room.backMinute = minute
         room.always = 0
-        
+
         if hour == 0 and minute == 0:
             room.always = 1
 
@@ -312,7 +312,7 @@ class Mill:
         await self.request("changeRoomMode", payload)
         self.rooms[room_id] = room
 
-    def sync_set_room_mode(self,  room_id, mode=None, hour=0, minute=0):
+    def sync_set_room_mode(self, room_id, mode=None, hour=0, minute=0):
         """Request data."""
         loop = asyncio.get_event_loop()
         task = loop.create_task(self.set_room_mode(room_id, mode, hour, minute))
