@@ -227,6 +227,10 @@ class Mill:
                 payload = {"roomId": _room.get("roomId"), "timeZoneNum": "+01:00"}
                 room_device = await self.request("selectDevicebyRoom", payload)
 
+                room.always = room_device.get("always")
+                room.backHour = room_device.get("backHour")
+                room.backMinute = room_device.get("backMinute")
+
                 if room_device is None:
                     continue
                 heater_info = room_device.get('deviceInfo', [])
@@ -277,6 +281,42 @@ class Mill:
                    "homeType": 0}
         await self.request("changeRoomModeTempInfo", payload)
         self.rooms[room_id] = room
+
+    async def set_room_mode(self, room_id, mode=None, hour=0, minute=0):
+        """Set room program override."""
+
+        if mode is None:
+            _LOGGER.error("Need to define mode 0 (normal), 1 (comfort), 2 (sleep), 3 (away)")
+            return
+
+        room = self.rooms.get(room_id)
+
+        if room is None:
+            _LOGGER.error("No such device")
+            return
+
+        room.backHour = hour
+        room.backMinute = minute
+        room.always = 0
+
+        if hour == 0 and minute == 0:
+            room.always = 1
+
+        payload = {"roomId": room_id,
+                   "hour": room.backHour,
+                   "minute": room.backMinute,
+                   "mode": mode,
+                   "always": room.always,
+                   "timeZoneNum": "+02:00"}
+
+        await self.request("changeRoomMode", payload)
+        self.rooms[room_id] = room
+
+    def sync_set_room_mode(self, room_id, mode=None, hour=0, minute=0):
+        """Request data."""
+        loop = asyncio.get_event_loop()
+        task = loop.create_task(self.set_room_mode(room_id, mode, hour, minute))
+        return loop.run_until_complete(task)
 
     async def update_heaters(self):
         """Request data."""
@@ -407,6 +447,9 @@ class Room:
     home_name = None
     avg_temp = None  # current temperature in the room
     current_mode = None
+    always = None
+    backHour = None
+    backMinute = None
 
     def __repr__(self):
         items = ("%s=%r" % (k, v) for k, v in self.__dict__.items())
