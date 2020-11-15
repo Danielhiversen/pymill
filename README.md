@@ -34,4 +34,4 @@ mill_connection.sync_close_connection()
 
 ```
 
-The library is used as part of Home Assistant: [https://github.com/home-assistant/home-assistant/blob/dev/homeassistant/components/climate/mill.py](https://github.com/home-assistant/home-assistant/blob/dev/homeassistant/components/climate/mill.py)
+The library is used as part of Home Assistant: https://github.com/home-assistant/core/blob/dev/homeassistant/components/mill/climate.py
