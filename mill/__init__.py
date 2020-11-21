@@ -1,6 +1,5 @@
 """Library to handle connection with mill."""
 # Based on https://pastebin.com/53Nk0wJA and Postman capturing from the app
-# All requests are send unencrypted from the app :(
 import asyncio
 import datetime as dt
 import hashlib
@@ -324,9 +323,7 @@ class Mill:
         homes = await self.get_home_list()
         for home in homes:
             tasks.append(self._update_heater_home_data(home))
-        await asyncio.gather(*tasks)
 
-        tasks = []
         for _id, heater in self.heaters.items():
             tasks.append(self._update_consumption(_id, heater))
             if heater.independent_device:
