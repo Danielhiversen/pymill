@@ -1,6 +1,5 @@
 """Library to handle connection with mill."""
 # Based on https://pastebin.com/53Nk0wJA and Postman capturing from the app
-# All requests are send unencrypted from the app :(
 import asyncio
 import datetime as dt
 import hashlib
@@ -320,32 +319,56 @@ class Mill:
 
     async def update_heaters(self):
         """Request data."""
+        tasks = []
         homes = await self.get_home_list()
         for home in homes:
-            payload = {"homeId": home.get("homeId")}
-            data = await self.request("getIndependentDevices", payload)
-            if data is None:
-                continue
-            heater_data = data.get('deviceInfo', [])
-            if not heater_data:
-                continue
-            for _heater in heater_data:
-                _id = _heater.get('deviceId')
-                heater = self.heaters.get(_id, Heater())
-                heater.device_id = _id
-                await set_heater_values(_heater, heater)
-                self.heaters[_id] = heater
+            tasks.append(self._update_heater_home_data(home))
 
         for _id, heater in self.heaters.items():
+            tasks.append(self._update_consumption(_id, heater))
             if heater.independent_device:
                 continue
-            payload = {"deviceId": _id}
-            _heater = await self.request("selectDevice", payload)
-            if _heater is None:
-                self.heaters[_id].available = False
-                continue
-            await set_heater_values(_heater, heater)
+            tasks.append(self._update_heater_data(_id, heater))
+        await asyncio.gather(*tasks)
+
+    async def _update_heater_home_data(self, home):
+        payload = {"homeId": home.get("homeId")}
+        data = await self.request("getIndependentDevices", payload)
+        if data is None:
+            return
+        heater_data = data.get('deviceInfo', [])
+        if not heater_data:
+            return
+        for _heater in heater_data:
+            _id = _heater.get('deviceId')
+            heater = self.heaters.get(_id, Heater())
+            heater.device_id = _id
+            set_heater_values(_heater, heater)
             self.heaters[_id] = heater
+
+    async def _update_heater_data(self, _id, heater):
+        payload = {"deviceId": _id}
+        _heater = await self.request("selectDevice", payload)
+        if _heater is None:
+            self.heaters[_id].available = False
+            return
+        set_heater_values(_heater, heater)
+        self.heaters[_id] = heater
+
+    async def _update_consumption(self, _id, heater):
+        task0 = self.request("statisticDevice",
+                             {"deviceId": _id,
+                              "dateType": 0,
+                              "timeZone": "GMT1",
+                              "date": dt.datetime.now().strftime("%Y-%m-%d")})
+        task3 = self.request("statisticDevice",
+                             {"deviceId": _id,
+                              "dateType": 3,
+                              "timeZone": "GMT1",
+                              "date": dt.datetime.now().strftime("%Y-%m-%d")})
+        (cons0, cons1) = await asyncio.gather(*[task0, task3])
+        heater.day_consumption = cons0.get("valueTotal")
+        heater.total_consumption = cons1.get("valueTotal")
 
     def sync_update_heaters(self):
         """Request data."""
@@ -474,6 +497,8 @@ class Heater:
     available = False
     is_holiday = None
     can_change_temp = 1
+    day_consumption = None
+    total_consumption = None
 
     @property
     def is_gen1(self):
@@ -485,7 +510,7 @@ class Heater:
         return "%s(%s)" % (self.__class__.__name__, ', '.join(items))
 
 
-async def set_heater_values(heater_data, heater):
+def set_heater_values(heater_data, heater):
     """Set heater values from heater data"""
     heater.current_temp = heater_data.get('currentTemp')
     heater.device_status = heater_data.get('deviceStatus')
