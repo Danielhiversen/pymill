@@ -13,12 +13,3 @@ language: python
 script:
 - flake8 mill --max-line-length=120
 - pylint mill --max-line-length=120
-deploy:
-  provider: pypi
-  user: dahoiv
-  password:
-    secure: waUfisi6YVlXeJDIgSrR2ZlCZdq47bVkgAJh1MzV5ix0pMhznJi1x4ksSxnmjG0fo4JJCfF/ft+UuIIAvOlniH+eiQ3aSZw0ANuzBTjdnF18l/dwQtm7pifZBobqEJZXmJaBLzRf5ebmKSFX1jSYHWBXmz35c04zYxu7P6zLnRf8a7hgI3C8boTbx04XmaOr3KLFO11Fc3ompsN9dFozLGrXrqIRn8QE0jWkSy5URAyYZxP6oHki+e164Ny52xNBPSI4nVBpOByykRjTuKnmk5QRVG+mulHk00hLUHICRY5bde/wX/Z5ilgP21ohj6NlQbttogJhn3SiJpYmwy1YizpbZtzLnmD4rJRh72fjynP81hGwKNYCbXzlXb2FoB5d4qu0V9ddAnvDwHZb5uwy94FdhtTHSvJNsxIqbiY4gA90ApEU2NQLA7Ew8V7zpfFSTjvFiklZIBgLNEhyxS0KbfdkW01b19JZEt27L7GRRa6zyAKlENsaOmTsAEle0nGtU1PMTTtas44na4OEoPUDS1iBWeN+gE2RvGxPq+MclKgW2Q9nRujqXm3h0/vcShmktADggon0s/1TRiyhKskLG6vyPmokpqk2cVOor0Q+PD98tVZOJh0ycdBcIXCa8aIMnvvgoPv7ucW2GZq7/BUfZS4kCYnu+Gcn79h3MswBMMc=
-  on:
-    tags: true
-    repo: Danielhiversen/pymill
-    branch: master
