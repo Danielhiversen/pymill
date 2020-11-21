@@ -1,16 +1,12 @@
 from setuptools import setup
 
-long_description = None
-with open("README.md", 'r') as fp:
-    long_description = fp.read()
-
 setup(
     name = 'millheater',
     packages = ['mill'],
     install_requires=['aiohttp>=3.0.6', 'async_timeout>=1.4.0'],
     version='0.4.0',
     description='A python3 library to communicate with Mill',
-    long_description=long_description,
+    long_description='A python3 library to communicate with Mill',
     python_requires='>=3.5.3',
     author='Daniel Hjelseth Hoyer',
     author_email='mail@dahoiv.net',
