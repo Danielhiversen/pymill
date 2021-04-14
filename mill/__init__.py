@@ -366,9 +366,11 @@ class Mill:
                               "dateType": 3,
                               "timeZone": "GMT1",
                               "date": dt.datetime.now().strftime("%Y-%m-%d")})
-        (cons0, cons1) = await asyncio.gather(*[task0, task3])
-        heater.day_consumption = cons0.get("valueTotal")
-        heater.total_consumption = cons1.get("valueTotal")
+        (cons0, cons3) = await asyncio.gather(*[task0, task3])
+        if cons0 is not None:
+            heater.day_consumption = cons0.get("valueTotal")
+        if cons3 is not None:
+            heater.total_consumption = cons3.get("valueTotal")
 
     def sync_update_heaters(self):
         """Request data."""
