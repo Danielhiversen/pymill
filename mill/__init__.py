@@ -364,7 +364,7 @@ class Mill:
         payload = {"deviceId": heater.device_id}
         _heater = await self.request("selectDevice", payload)
         if _heater is None:
-            self.heaters[_id].available = False
+            self.heaters[heater.device_id].available = False
             return
         set_heater_values(_heater, heater)
         self.heaters[heater.device_id] = heater
