@@ -374,7 +374,10 @@ class Mill:
             cons0, cons3, timestamp = self._cached_cons_data.get(
                 heater.home_id, (None, None, None)
             )
-            if cons0 is None or (dt.datetime.now() - timestamp).total_seconds() > 20 * 60:
+            if (
+                cons0 is None
+                or (dt.datetime.now() - timestamp).total_seconds() > 20 * 60
+            ):
                 task0 = self.request(
                     "statisticHome",
                     {
