@@ -371,10 +371,10 @@ class Mill:
 
     async def _update_consumption(self, heater):
         async with self._lock_cons_data:
-            cons0, cons3, ts = self._cached_cons_data.get(
+            cons0, cons3, timestamp = self._cached_cons_data.get(
                 heater.home_id, (None, None, None)
             )
-            if cons0 is None or (dt.datetime.now() - ts).total_seconds() > 20 * 60:
+            if cons0 is None or (dt.datetime.now() - timestamp).total_seconds() > 20 * 60:
                 task0 = self.request(
                     "statisticHome",
                     {
