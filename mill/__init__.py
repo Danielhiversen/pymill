@@ -46,6 +46,8 @@ class Mill:
         self.heaters = {}
         self._throttle_time = None
         self._throttle_all_time = None
+        self._cached_cons_data = {}
+        self._lock_cons_data = asyncio.Lock()
 
     async def connect(self, retry=2):
         """Connect to Mill."""
@@ -241,6 +243,8 @@ class Mill:
                     heater.name = _heater.get("deviceName")
                     heater.room = room
                     self.heaters[_id] = heater
+                    if heater.home_id is None:
+                        heater.home_id = home.get("homeId")
 
     def sync_update_rooms(self):
         """Request data."""
@@ -332,11 +336,11 @@ class Mill:
         for home in homes:
             tasks.append(self._update_heater_home_data(home))
 
-        for _id, heater in self.heaters.items():
-            tasks.append(self._update_consumption(_id, heater))
+        for heater in self.heaters.values():
+            tasks.append(self._update_consumption(heater))
             if heater.independent_device:
                 continue
-            tasks.append(self._update_heater_data(_id, heater))
+            tasks.append(self._update_heater_data(heater))
         await asyncio.gather(*tasks)
 
     async def _update_heater_home_data(self, home):
@@ -353,40 +357,62 @@ class Mill:
             heater.device_id = _id
             set_heater_values(_heater, heater)
             self.heaters[_id] = heater
+            if heater.home_id is None:
+                heater.home_id = home.get("homeId")
 
-    async def _update_heater_data(self, _id, heater):
-        payload = {"deviceId": _id}
+    async def _update_heater_data(self, heater):
+        payload = {"deviceId": heater.device_id}
         _heater = await self.request("selectDevice", payload)
         if _heater is None:
-            self.heaters[_id].available = False
+            self.heaters[heater.device_id].available = False
             return
         set_heater_values(_heater, heater)
-        self.heaters[_id] = heater
+        self.heaters[heater.device_id] = heater
 
-    async def _update_consumption(self, _id, heater):
-        task0 = self.request(
-            "statisticDevice",
-            {
-                "deviceId": _id,
-                "dateType": 0,
-                "timeZone": "GMT1",
-                "date": dt.datetime.now().strftime("%Y-%m-%d"),
-            },
-        )
-        task3 = self.request(
-            "statisticDevice",
-            {
-                "deviceId": _id,
-                "dateType": 3,
-                "timeZone": "GMT1",
-                "date": dt.datetime.now().strftime("%Y-%m-%d"),
-            },
-        )
-        (cons0, cons3) = await asyncio.gather(*[task0, task3])
+    async def _update_consumption(self, heater):
+        async with self._lock_cons_data:
+            cons0, cons3, timestamp = self._cached_cons_data.get(
+                heater.home_id, (None, None, None)
+            )
+            if (
+                cons0 is None
+                or (dt.datetime.now() - timestamp).total_seconds() > 20 * 60
+            ):
+                task0 = self.request(
+                    "statisticHome",
+                    {
+                        "homeId": heater.home_id,
+                        "dateType": 0,
+                        "timeZone": "GMT1",
+                        "date": dt.datetime.now().strftime("%Y-%m-%d"),
+                    },
+                )
+                task3 = self.request(
+                    "statisticHome",
+                    {
+                        "homeId": heater.home_id,
+                        "dateType": 3,
+                        "timeZone": "GMT1",
+                        "date": dt.datetime.now().strftime("%Y-%m-%d"),
+                    },
+                )
+                (cons0, cons3) = await asyncio.gather(*[task0, task3])
+                self._cached_cons_data[heater.home_id] = (
+                    cons0,
+                    cons3,
+                    dt.datetime.now(),
+                )
+
         if cons0 is not None:
-            heater.day_consumption = cons0.get("valueTotal")
+            for device in cons0["deviceList"]:
+                if device.get("deviceId") == heater.device_id:
+                    heater.day_consumption = float(device.get("valueTotal"))
+                    break
         if cons3 is not None:
-            heater.total_consumption = cons3.get("valueTotal")
+            for device in cons3["deviceList"]:
+                if device.get("deviceId") == heater.device_id:
+                    heater.total_consumption = float(device.get("valueTotal"))
+                    break
 
     def sync_update_heaters(self):
         """Request data."""
@@ -509,6 +535,7 @@ class Heater:
     # pylint: disable=too-few-public-methods
     name = None
     device_id = None
+    home_id = None
     current_temp = None
     set_temp = None
     fan_status = None
