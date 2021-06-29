@@ -21,6 +21,7 @@ API_ENDPOINT_2 = "https://eurouter.ablecloud.cn:9005/millService/v1/"
 API_ENDPOINT_STATS = "https://api.millheat.com/statistics/"
 DEFAULT_TIMEOUT = 10
 MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=5)
+MIN_TIME_BETWEEN_STATS_UPDATES = dt.timedelta(minutes=30)
 REQUEST_TIMEOUT = "300"
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,10 +54,14 @@ class Mill:
         self._throttle_all_time = None
         self._lock_cons_data = asyncio.Lock()
 
-        key = b"vO\xe4O\xe0G\xeb|$\x9d\x8375\xd6\x1bl\xca\x96'\x8f" \
-              b"\x02\x06\xc8\n\xe5\x85/\x81\xd6\x0f\x93\xa0"
+        key = (
+            b"vO\xe4O\xe0G\xeb|$\x9d\x8375\xd6\x1bl\xca\x96'\x8f"
+            b"\x02\x06\xc8\n\xe5\x85/\x81\xd6\x0f\x93\xa0"
+        )
         _iv = bytearray([10, 1, 11, 5, 4, 15, 7, 9, 23, 3, 1, 6, 8, 12, 13, 91])
-        self._cipher = Cipher(algorithms.AES(key), modes.CBC(_iv), backend=default_backend())
+        self._cipher = Cipher(
+            algorithms.AES(key), modes.CBC(_iv), backend=default_backend()
+        )
 
     async def connect(self, retry=2):
         """Connect to Mill."""
@@ -418,9 +423,11 @@ class Mill:
         self.heaters[heater.device_id] = heater
 
     async def _update_consumption(self, heater):
-        if heater.last_consumption_update and (
-            dt.datetime.now() - heater.last_consumption_update
-        ) < dt.timedelta(minutes=30):
+        if (
+            heater.last_consumption_update
+            and (dt.datetime.now() - heater.last_consumption_update)
+            < MIN_TIME_BETWEEN_STATS_UPDATES
+        ):
             return
 
         async with self._lock_cons_data:
