@@ -53,7 +53,8 @@ class Mill:
         self._throttle_all_time = None
         self._lock_cons_data = asyncio.Lock()
 
-        key = b"vO\xe4O\xe0G\xeb|$\x9d\x8375\xd6\x1bl\xca\x96'\x8f\x02\x06\xc8\n\xe5\x85/\x81\xd6\x0f\x93\xa0"
+        key = b"vO\xe4O\xe0G\xeb|$\x9d\x8375\xd6\x1bl\xca\x96'\x8f" \
+              b"\x02\x06\xc8\n\xe5\x85/\x81\xd6\x0f\x93\xa0"
         _iv = bytearray([10, 1, 11, 5, 4, 15, 7, 9, 23, 3, 1, 6, 8, 12, 13, 91])
         self._cipher = Cipher(algorithms.AES(key), modes.CBC(_iv), backend=default_backend())
 
