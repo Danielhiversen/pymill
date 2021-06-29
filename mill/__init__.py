@@ -21,6 +21,7 @@ API_ENDPOINT_2 = "https://eurouter.ablecloud.cn:9005/millService/v1/"
 API_ENDPOINT_STATS = "https://api.millheat.com/statistics/"
 DEFAULT_TIMEOUT = 10
 MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=5)
+MIN_TIME_BETWEEN_STATS_UPDATES = dt.timedelta(minutes=30)
 REQUEST_TIMEOUT = "300"
 
 _LOGGER = logging.getLogger(__name__)
@@ -420,7 +421,7 @@ class Mill:
     async def _update_consumption(self, heater):
         if heater.last_consumption_update and (
             dt.datetime.now() - heater.last_consumption_update
-        ) < dt.timedelta(minutes=30):
+        ) < MIN_TIME_BETWEEN_STATS_UPDATES:
             return
 
         async with self._lock_cons_data:
