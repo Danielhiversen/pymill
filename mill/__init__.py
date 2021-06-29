@@ -8,14 +8,19 @@ import logging
 import random
 import string
 import time
+from base64 import b64encode
 
 import aiohttp
 import async_timeout
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 API_ENDPOINT_1 = "https://eurouter.ablecloud.cn:9005/zc-account/v1/"
 API_ENDPOINT_2 = "https://eurouter.ablecloud.cn:9005/millService/v1/"
+API_ENDPOINT_STATS = "https://api.millheat.com/statistics/"
 DEFAULT_TIMEOUT = 10
-MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=2)
+MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=5)
 REQUEST_TIMEOUT = "300"
 
 _LOGGER = logging.getLogger(__name__)
@@ -46,8 +51,12 @@ class Mill:
         self.heaters = {}
         self._throttle_time = None
         self._throttle_all_time = None
-        self._cached_cons_data = {}
         self._lock_cons_data = asyncio.Lock()
+
+        key = b"vO\xe4O\xe0G\xeb|$\x9d\x8375\xd6\x1bl\xca\x96'\x8f" \
+              b"\x02\x06\xc8\n\xe5\x85/\x81\xd6\x0f\x93\xa0"
+        _iv = bytearray([10, 1, 11, 5, 4, 15, 7, 9, 23, 3, 1, 6, 8, 12, 13, 91])
+        self._cipher = Cipher(algorithms.AES(key), modes.CBC(_iv), backend=default_backend())
 
     async def connect(self, retry=2):
         """Connect to Mill."""
@@ -187,6 +196,45 @@ class Mill:
         if "errorCode" in result:
             _LOGGER.error("Failed to send request, %s", result)
             return None
+        data = json.loads(result)
+        return data
+
+    async def request_stats(self, command, payload, retry=3):
+        """Request data."""
+        _LOGGER.debug(command, payload)
+        url = API_ENDPOINT_STATS + command
+        json_data = json.dumps(payload)
+        token = str(int(time.time() * 1000)) + "_" + str(self._user_id)
+        padder = padding.PKCS7(128).padder()
+        data = padder.update(token.encode()) + padder.finalize()
+        encryptor = self._cipher.encryptor()
+        milltoken = b64encode(encryptor.update(data) + encryptor.finalize())
+
+        headers = {
+            "accept-encoding": "gzip",
+            "accept-language": "en-US,en;q=0.8",
+            "connection": "Keep-Alive",
+            "content-length": str(len(json_data)),
+            "content-type": "application/json",
+            "milltoken": milltoken.decode(),
+        }
+        try:
+            with async_timeout.timeout(self._timeout):
+                resp = await self.websession.post(url, data=json_data, headers=headers)
+        except asyncio.TimeoutError:
+            if retry < 1:
+                _LOGGER.error("Timed out sending stats command to Mill: %s", command)
+                return None
+            return await self.request_stats(command, payload, retry - 1)
+        except aiohttp.ClientError:
+            _LOGGER.error(
+                "Error sending stats command to Mill: %s", command, exc_info=True
+            )
+            return None
+
+        result = await resp.text()
+
+        _LOGGER.debug(result)
         data = json.loads(result)
         return data
 
@@ -370,49 +418,45 @@ class Mill:
         self.heaters[heater.device_id] = heater
 
     async def _update_consumption(self, heater):
-        async with self._lock_cons_data:
-            cons0, cons3, timestamp = self._cached_cons_data.get(
-                heater.home_id, (None, None, None)
-            )
-            if (
-                cons0 is None
-                or (dt.datetime.now() - timestamp).total_seconds() > 20 * 60
-            ):
-                task0 = self.request(
-                    "statisticHome",
-                    {
-                        "homeId": heater.home_id,
-                        "dateType": 0,
-                        "timeZone": "GMT1",
-                        "date": dt.datetime.now().strftime("%Y-%m-%d"),
-                    },
-                )
-                task3 = self.request(
-                    "statisticHome",
-                    {
-                        "homeId": heater.home_id,
-                        "dateType": 3,
-                        "timeZone": "GMT1",
-                        "date": dt.datetime.now().strftime("%Y-%m-%d"),
-                    },
-                )
-                (cons0, cons3) = await asyncio.gather(*[task0, task3])
-                self._cached_cons_data[heater.home_id] = (
-                    cons0,
-                    cons3,
-                    dt.datetime.now(),
-                )
+        if heater.last_consumption_update and (
+            dt.datetime.now() - heater.last_consumption_update
+        ) < dt.timedelta(minutes=30):
+            return
 
-        if cons0 is not None:
-            for device in cons0["deviceList"]:
-                if device.get("deviceId") == heater.device_id:
-                    heater.day_consumption = float(device.get("valueTotal"))
-                    break
-        if cons3 is not None:
-            for device in cons3["deviceList"]:
-                if device.get("deviceId") == heater.device_id:
-                    heater.total_consumption = float(device.get("valueTotal"))
-                    break
+        async with self._lock_cons_data:
+            cons = await self.request_stats(
+                "statisticDeviceForAndroid",
+                {
+                    "dateType": 1,
+                    "dateStr": dt.datetime.now().strftime("%Y-%m-%d"),
+                    "timeZone": "GMT+02:00",
+                    "haveSensor": 1,
+                    "deviceId": heater.device_id,
+                },
+            )
+
+            if cons is None or cons.get("code") != 0:
+                return
+
+            heater.day_consumption = float(cons.get("valueTotal"))
+            heater.last_consumption_update = dt.datetime.now()
+
+            cons = await self.request_stats(
+                "statisticDeviceForAndroid",
+                {
+                    "dateType": 3,
+                    "dateStr": dt.datetime.now().strftime("%Y-%m-%d"),
+                    "timeZone": "GMT+02:00",
+                    "haveSensor": 1,
+                    "deviceId": heater.device_id,
+                },
+            )
+
+            if cons is None or cons.get("code") != 0:
+                return
+
+            heater.year_consumption = float(cons.get("valueTotal"))
+            heater.last_consumption_update = dt.datetime.now()
 
     def sync_update_heaters(self):
         """Request data."""
@@ -550,7 +594,8 @@ class Heater:
     is_holiday = None
     can_change_temp = 1
     day_consumption = None
-    total_consumption = None
+    year_consumption = None
+    last_consumption_update = None
 
     @property
     def is_gen1(self):
