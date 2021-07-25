@@ -382,6 +382,14 @@ class Mill:
         task = loop.create_task(self.set_room_mode(room_id, mode, hour, minute))
         return loop.run_until_complete(task)
 
+    async def fetch_heater_data(self):
+        """Request data."""
+        if not self.heaters:
+            await self.update_rooms()
+
+        await self.update_heaters()
+        return self.heaters
+
     async def update_heaters(self):
         """Request data."""
         tasks = []
