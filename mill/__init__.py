@@ -389,7 +389,7 @@ class Mill:
 
         await self.update_heaters()
         return self.heaters
-    
+
     async def update_heaters(self):
         """Request data."""
         tasks = []
