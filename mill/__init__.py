@@ -454,7 +454,6 @@ class Mill:
                 return
 
             heater.day_consumption = float(cons.get("valueTotal"))
-            heater.last_consumption_update = dt.datetime.now()
 
             cons = await self.request_stats(
                 "statisticDeviceForAndroid",
