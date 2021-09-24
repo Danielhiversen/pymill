@@ -626,7 +626,7 @@ class Heater:
 def set_heater_values(heater_data, heater):
     """Set heater values from heater data"""
     heater.current_temp = heater_data.get("currentTemp")
-    if heater.current_temp == 99.0:
+    if heater.current_temp > 90.0:
         heater.current_temp = None
     heater.device_status = heater_data.get("deviceStatus")
     heater.available = heater.device_status == 0
