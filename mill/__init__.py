@@ -622,6 +622,7 @@ class Heater:
         items = (f"{k}={v}" for k, v in self.__dict__.items())
         return f"{self.__class__.__name__}({', '.join(items)})"
 
+
 def set_heater_values(heater_data, heater):
     """Set heater values from heater data"""
     heater.current_temp = heater_data.get("currentTemp")
