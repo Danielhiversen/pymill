@@ -112,21 +112,9 @@ class Mill:
         self._user_id = user_id
         return True
 
-    def sync_connect(self):
-        """Close the Mill connection."""
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(self.connect())
-        loop.run_until_complete(task)
-
     async def close_connection(self):
         """Close the Mill connection."""
         await self.websession.close()
-
-    def sync_close_connection(self):
-        """Close the Mill connection."""
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(self.close_connection())
-        loop.run_until_complete(task)
 
     async def request(self, command, payload, retry=3):
         """Request data."""
@@ -243,12 +231,6 @@ class Mill:
         data = json.loads(result)
         return data
 
-    def sync_request(self, command, payload, retry=2):
-        """Request data."""
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(self.request(command, payload, retry))
-        return loop.run_until_complete(task)
-
     async def get_home_list(self):
         """Request data."""
         resp = await self.request("selectHomeList", "{}")
@@ -298,12 +280,6 @@ class Mill:
                     self.heaters[_id] = heater
                     if heater.home_id is None:
                         heater.home_id = home.get("homeId")
-
-    def sync_update_rooms(self):
-        """Request data."""
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(self.update_rooms())
-        return loop.run_until_complete(task)
 
     async def set_room_temperatures_by_name(
         self, room_name, sleep_temp=None, comfort_temp=None, away_temp=None
@@ -375,12 +351,6 @@ class Mill:
 
         await self.request("changeRoomMode", payload)
         self.rooms[room_id] = room
-
-    def sync_set_room_mode(self, room_id, mode=None, hour=0, minute=0):
-        """Request data."""
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(self.set_room_mode(room_id, mode, hour, minute))
-        return loop.run_until_complete(task)
 
     async def fetch_heater_data(self):
         """Request data."""
@@ -472,12 +442,6 @@ class Mill:
             heater.year_consumption = float(cons.get("valueTotal"))
             heater.last_consumption_update = dt.datetime.now()
 
-    def sync_update_heaters(self):
-        """Request data."""
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(self.update_heaters())
-        loop.run_until_complete(task)
-
     async def throttle_update_heaters(self):
         """Throttle update device."""
         if (
@@ -532,14 +496,6 @@ class Mill:
         }
         await self.request("deviceControl", payload)
 
-    def sync_heater_control(self, device_id, fan_status=None, power_status=None):
-        """Set heater temps."""
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(
-            self.heater_control(device_id, fan_status, power_status)
-        )
-        loop.run_until_complete(task)
-
     async def set_heater_temp(self, device_id, set_temp):
         """Set heater temp."""
         payload = {
@@ -550,12 +506,6 @@ class Mill:
             "key": "holidayTemp",
         }
         await self.request("changeDeviceInfo", payload)
-
-    def sync_set_heater_temp(self, device_id, set_temp):
-        """Set heater temps."""
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(self.set_heater_temp(device_id, set_temp))
-        loop.run_until_complete(task)
 
     async def find_all_heaters(self):
         """Find all heaters."""
