@@ -583,8 +583,8 @@ class Room:
     backMinute = None
 
     def __repr__(self):
-        items = ("%s=%r" % (k, v) for k, v in self.__dict__.items())
-        return "%s(%s)" % (self.__class__.__name__, ", ".join(items))
+        items = (f"{k}={v}" for k, v in self.__dict__.items())
+        return f"{self.__class__.__name__}({', '.join(items)})"
 
 
 class Heater:
@@ -619,8 +619,8 @@ class Heater:
         ]
 
     def __repr__(self):
-        items = ("%s=%r" % (k, v) for k, v in self.__dict__.items())
-        return "%s(%s)" % (self.__class__.__name__, ", ".join(items))
+        items = (f"{k}={v}" for k, v in self.__dict__.items())
+        return f"{self.__class__.__name__}({', '.join(items)})"
 
 
 def set_heater_values(heater_data, heater):
