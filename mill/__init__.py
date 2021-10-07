@@ -412,7 +412,7 @@ class Mill:
             cons = await self.request_stats(
                 "statisticDeviceForAndroid",
                 {
-                    "dateType": 1,
+                    "dateType": 0,
                     "dateStr": dt.datetime.now().strftime("%Y-%m-%d"),
                     "timeZone": "GMT+02:00",
                     "haveSensor": 1,
