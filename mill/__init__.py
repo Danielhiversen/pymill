@@ -313,9 +313,8 @@ class Mill:
             "sleepTemp": room.sleep_temp,
             "comfortTemp": room.comfort_temp,
             "awayTemp": room.away_temp,
-            "homeType": 0,
         }
-        await self.request("changeRoomModeTempInfo", payload)
+        await self.request("changeRoomModeTempInfoAway", payload)
         self.rooms[room_id] = room
 
     async def set_room_mode(self, room_id, mode=None, hour=0, minute=0):
