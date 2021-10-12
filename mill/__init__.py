@@ -288,7 +288,7 @@ class Mill:
         if sleep_temp is None and comfort_temp is None and away_temp is None:
             return
         for room_id, _room in self.rooms.items():
-            if _room.name == room_name:
+            if _room.name.lower().strip() == room_name.lower().strip():
                 await self.set_room_temperatures(
                     room_id, sleep_temp, comfort_temp, away_temp
                 )
