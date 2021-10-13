@@ -539,6 +539,11 @@ class Heater:
             863,
         ]
 
+    @property
+    def generation(self):
+        """Check if heater is gen 1."""
+        return 1 if self.is_gen1 else 2
+
     def __repr__(self):
         items = (f"{k}={v}" for k, v in self.__dict__.items())
         return f"{self.__class__.__name__}({', '.join(items)})"
