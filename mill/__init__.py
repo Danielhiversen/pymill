@@ -1,6 +1,8 @@
 """Library to handle connection with mill."""
 # Based on https://pastebin.com/53Nk0wJA and Postman capturing from the app
 import asyncio
+from base64 import b64encode
+from dataclasses import dataclass
 import datetime as dt
 import hashlib
 import json
@@ -8,7 +10,6 @@ import logging
 import random
 import string
 import time
-from base64 import b64encode
 
 import aiohttp
 import async_timeout
@@ -50,6 +51,7 @@ class Mill:
         self._token = None
         self.rooms = {}
         self.heaters = {}
+        self.sensors = {}
         self._throttle_time = None
         self._throttle_all_time = None
 
@@ -260,6 +262,7 @@ class Mill:
                 self.rooms[_id] = room
                 payload = {"roomId": _room.get("roomId"), "timeZoneNum": "+01:00"}
                 room_device = await self.request("selectDevicebyRoom", payload)
+                # room_device = await self.request("selectDevicebyRoom2020", payload)
 
                 room.always = room_device.get("always")
                 room.backHour = room_device.get("backHour")
@@ -358,12 +361,20 @@ class Mill:
         await self.update_heaters()
         return self.heaters
 
+    async def fetch_heater_sensor_data(self):
+        """Request data."""
+        if not self.heaters:
+            await self.update_rooms()
+
+        await self.update_heaters()
+        return {**self.heaters, **self.sensors}
+
     async def update_heaters(self):
         """Request data."""
         tasks = []
         homes = await self.get_home_list()
         for home in homes:
-            tasks.append(self._update_heater_home_data(home))
+            tasks.append(self._update_independent_devices(home))
 
         for heater in self.heaters.values():
             tasks.append(self._update_consumption(heater))
@@ -372,22 +383,27 @@ class Mill:
             tasks.append(self._update_heater_data(heater))
         await asyncio.gather(*tasks)
 
-    async def _update_heater_home_data(self, home):
+    async def _update_independent_devices(self, home):
         payload = {"homeId": home.get("homeId")}
-        data = await self.request("getIndependentDevices", payload)
+        data = await self.request("getIndependentDevices2020", payload)
         if data is None:
             return
-        heater_data = data.get("deviceInfo", [])
-        if not heater_data:
+        dev_data = data.get("deviceInfo", [])
+        if not dev_data:
             return
-        for _heater in heater_data:
-            _id = _heater.get("deviceId")
-            heater = self.heaters.get(_id, Heater())
-            heater.device_id = _id
-            set_heater_values(_heater, heater)
-            self.heaters[_id] = heater
-            if heater.home_id is None:
-                heater.home_id = home.get("homeId")
+        for dev in dev_data:
+            _id = dev.get("deviceId")
+            print(dev)
+
+            if dev["subDomainId"] in (6933,):
+                self.sensors[_id] = Sensor.init_from_response(dev)
+            else:
+                heater = self.heaters.get(_id, Heater())
+                heater.device_id = _id
+                set_heater_values(dev, heater)
+                self.heaters[_id] = heater
+                if heater.home_id is None:
+                    heater.home_id = home.get("homeId")
 
     async def _update_heater_data(self, heater):
         payload = {"deviceId": heater.device_id}
@@ -432,36 +448,6 @@ class Mill:
         if cons3 is not None and cons3.get("code") == 0:
             heater.year_consumption = float(cons3.get("valueTotal"))
 
-    async def throttle_update_heaters(self):
-        """Throttle update device."""
-        if (
-            self._throttle_time is not None
-            and dt.datetime.now() - self._throttle_time < MIN_TIME_BETWEEN_UPDATES
-        ):
-            return
-        self._throttle_time = dt.datetime.now()
-        await self.update_heaters()
-
-    async def throttle_update_all_heaters(self):
-        """Throttle update all devices and rooms."""
-        if (
-            self._throttle_all_time is not None
-            and dt.datetime.now() - self._throttle_all_time < MIN_TIME_BETWEEN_UPDATES
-        ):
-            return
-        self._throttle_all_time = dt.datetime.now()
-        await self.find_all_heaters()
-
-    async def update_device(self, device_id):
-        """Update device."""
-        await self.throttle_update_heaters()
-        return self.heaters.get(device_id)
-
-    async def update_room(self, room_id):
-        """Update room."""
-        await self.throttle_update_all_heaters()
-        return self.rooms.get(room_id)
-
     async def heater_control(self, device_id, fan_status=None, power_status=None):
         """Set heater temps."""
         heater = self.heaters.get(device_id)
@@ -496,11 +482,6 @@ class Mill:
             "key": "holidayTemp",
         }
         await self.request("changeDeviceInfo", payload)
-
-    async def find_all_heaters(self):
-        """Find all heaters."""
-        await self.update_rooms()
-        await self.update_heaters()
 
 
 class Room:
@@ -558,6 +539,11 @@ class Heater:
             863,
         ]
 
+    @property
+    def generation(self):
+        """Check if heater is gen 1."""
+        return 1 if self.is_gen1 else 2
+
     def __repr__(self):
         items = (f"{k}={v}" for k, v in self.__dict__.items())
         return f"{self.__class__.__name__}({', '.join(items)})"
@@ -565,9 +551,13 @@ class Heater:
 
 def set_heater_values(heater_data, heater):
     """Set heater values from heater data"""
-    heater.current_temp = heater_data.get("currentTemp")
-    if heater.current_temp > 90.0:
+    try:
+        heater.current_temp = float(heater_data.get("currentTemp"))
+    except ValueError:
         heater.current_temp = None
+    else:
+        if heater.current_temp > 90.0:
+            heater.current_temp = None
     heater.device_status = heater_data.get("deviceStatus")
     heater.available = heater.device_status == 0
     heater.name = heater_data.get("deviceName")
@@ -608,3 +598,34 @@ def set_heater_values(heater_data, heater):
         )
     except ValueError:
         pass
+
+
+@dataclass
+class Sensor:
+    """Representation of sensor."""
+
+    name: str
+    device_id: int
+    current_temp: float
+    humidity: float
+    tvoc: float
+    eco2: float
+    battery: float
+
+    @property
+    def available(self):
+        """Available."""
+        return True
+
+    @classmethod
+    def init_from_response(cls, response):
+        """Class method."""
+        return cls(
+            response.get("deviceName"),
+            response.get("deviceId"),
+            response.get("currentTemp"),
+            response.get("humidity"),
+            response.get("tvoc"),
+            response.get("eco3"),
+            response.get("batteryPer"),
+        )
