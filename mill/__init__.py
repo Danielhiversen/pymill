@@ -21,7 +21,7 @@ API_ENDPOINT_2 = "https://eurouter.ablecloud.cn:9005/millService/v1/"
 API_ENDPOINT_STATS = "https://api.millheat.com/statistics/"
 DEFAULT_TIMEOUT = 10
 MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=5)
-MIN_TIME_BETWEEN_STATS_UPDATES = dt.timedelta(minutes=30)
+MIN_TIME_BETWEEN_STATS_UPDATES = dt.timedelta(minutes=10)
 REQUEST_TIMEOUT = "300"
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,7 +52,6 @@ class Mill:
         self.heaters = {}
         self._throttle_time = None
         self._throttle_all_time = None
-        self._lock_cons_data = asyncio.Lock()
 
         key = (
             b"vO\xe4O\xe0G\xeb|$\x9d\x8375\xd6\x1bl\xca\x96'\x8f"
@@ -400,46 +399,39 @@ class Mill:
         self.heaters[heater.device_id] = heater
 
     async def _update_consumption(self, heater):
-        if (
-            heater.last_consumption_update
-            and (dt.datetime.now() - heater.last_consumption_update)
-            < MIN_TIME_BETWEEN_STATS_UPDATES
-        ):
+        now = dt.datetime.now()
+        if heater.last_consumption_update and (
+            now - heater.last_consumption_update
+        ) < MIN_TIME_BETWEEN_STATS_UPDATES + dt.timedelta(random.randint(0, 60)):
             return
 
-        async with self._lock_cons_data:
-            cons = await self.request_stats(
-                "statisticDeviceForAndroid",
-                {
-                    "dateType": 0,
-                    "dateStr": dt.datetime.now().strftime("%Y-%m-%d"),
-                    "timeZone": "GMT+02:00",
-                    "haveSensor": 1,
-                    "deviceId": heater.device_id,
-                },
+        payload = {
+            "dateType": None,
+            "dateStr": now.strftime("%Y-%m-%d"),
+            "timeZone": "GMT+02:00",
+            "haveSensor": 1,
+            "deviceId": heater.device_id,
+        }
+
+        tasks = []
+        for date_type in [0, 3]:
+            payload["dateType"] = date_type
+            tasks.append(
+                self.request_stats(
+                    "statisticDeviceForAndroid",
+                    payload,
+                )
             )
 
-            if cons is None or cons.get("code") != 0:
-                return
+        (cons0, cons3) = await asyncio.gather(*tasks)
+        print(heater.name, dt.datetime.now(), cons0)
 
-            heater.day_consumption = float(cons.get("valueTotal"))
+        if cons0 is not None and cons0.get("code") == 0:
+            heater.day_consumption = float(cons0.get("valueTotal"))
+            heater.last_consumption_update = now
 
-            cons = await self.request_stats(
-                "statisticDeviceForAndroid",
-                {
-                    "dateType": 3,
-                    "dateStr": dt.datetime.now().strftime("%Y-%m-%d"),
-                    "timeZone": "GMT+02:00",
-                    "haveSensor": 1,
-                    "deviceId": heater.device_id,
-                },
-            )
-
-            if cons is None or cons.get("code") != 0:
-                return
-
-            heater.year_consumption = float(cons.get("valueTotal"))
-            heater.last_consumption_update = dt.datetime.now()
+        if cons3 is not None and cons3.get("code") == 0:
+            heater.year_consumption = float(cons3.get("valueTotal"))
 
     async def throttle_update_heaters(self):
         """Throttle update device."""
