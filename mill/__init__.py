@@ -609,6 +609,7 @@ class Sensor:
 
     @property
     def available(self):
+        """Available."""
         return True
 
     @classmethod
