@@ -393,7 +393,6 @@ class Mill:
             return
         for dev in dev_data:
             _id = dev.get("deviceId")
-            print(dev)
 
             if dev["subDomainId"] in (6933,):
                 self.sensors[_id] = Sensor.init_from_response(dev)
