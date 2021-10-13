@@ -424,7 +424,6 @@ class Mill:
             )
 
         (cons0, cons3) = await asyncio.gather(*tasks)
-        print(heater.name, dt.datetime.now(), cons0)
 
         if cons0 is not None and cons0.get("code") == 0:
             heater.day_consumption = float(cons0.get("valueTotal"))
