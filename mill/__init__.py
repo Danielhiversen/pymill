@@ -1,6 +1,8 @@
 """Library to handle connection with mill."""
 # Based on https://pastebin.com/53Nk0wJA and Postman capturing from the app
 import asyncio
+from base64 import b64encode
+from dataclasses import dataclass
 import datetime as dt
 import hashlib
 import json
@@ -8,8 +10,6 @@ import logging
 import random
 import string
 import time
-from base64 import b64encode
-from dataclasses import dataclass
 
 import aiohttp
 import async_timeout
@@ -264,7 +264,6 @@ class Mill:
                 room_device = await self.request("selectDevicebyRoom", payload)
                 # room_device = await self.request("selectDevicebyRoom2020", payload)
 
-
                 room.always = room_device.get("always")
                 room.backHour = room_device.get("backHour")
                 room.backMinute = room_device.get("backMinute")
@@ -396,7 +395,7 @@ class Mill:
             _id = dev.get("deviceId")
             print(dev)
 
-            if dev["subDomainId"] in (6933, ):
+            if dev["subDomainId"] in (6933,):
                 self.sensors[_id] = Sensor.init_from_response(dev)
             else:
                 heater = self.heaters.get(_id, Heater())
@@ -595,9 +594,11 @@ def set_heater_values(heater_data, heater):
     except ValueError:
         pass
 
+
 @dataclass
 class Sensor:
     """Representation of sensor."""
+
     name: str
     device_id: int
     current_temp: float
