@@ -514,6 +514,8 @@ class Heater:
     name = None
     device_id = None
     home_id = None
+    available = False
+
     current_temp = None
     set_temp = None
     fan_status = None
@@ -524,7 +526,6 @@ class Heater:
     is_heating = None
     tibber_control = None
     sub_domain = 5332
-    available = False
     is_holiday = None
     can_change_temp = 1
     day_consumption = None
@@ -603,18 +604,16 @@ def set_heater_values(heater_data, heater):
 class Sensor:
     """Representation of sensor."""
 
+    # pylint: disable=too-many-instance-attributes
+
     name: str
     device_id: int
+    available: bool
     current_temp: float
     humidity: float
     tvoc: float
     eco2: float
     battery: float
-
-    @property
-    def available(self):
-        """Available."""
-        return True
 
     @classmethod
     def init_from_response(cls, response):
@@ -622,9 +621,10 @@ class Sensor:
         return cls(
             response.get("deviceName"),
             response.get("deviceId"),
+            response.get("deviceStatus") == 0,
             response.get("currentTemp"),
             response.get("humidity"),
             response.get("tvoc"),
-            response.get("eco3"),
+            response.get("eco2"),
             response.get("batteryPer"),
         )
