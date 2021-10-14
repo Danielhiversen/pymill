@@ -604,6 +604,8 @@ def set_heater_values(heater_data, heater):
 class Sensor:
     """Representation of sensor."""
 
+    # pylint: disable=too-many-instance-attributes
+
     name: str
     device_id: int
     available: bool
