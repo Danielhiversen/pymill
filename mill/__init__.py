@@ -434,7 +434,7 @@ class Mill:
             tasks.append(
                 self.request_stats(
                     "statisticDeviceForAndroid",
-                    payload,
+                    payload.copy(),
                 )
             )
 
