@@ -361,7 +361,7 @@ class Mill:
         await self.update_heaters()
         return self.heaters
 
-    async def fetch_heater_sensor_data(self):
+    async def fetch_heater_and_sensor_data(self):
         """Request data."""
         if not self.heaters:
             await self.update_rooms()
