@@ -538,6 +538,23 @@ class Heater:
         return self.sub_domain in [
             863,
         ]
+    
+    @property
+    def is_gen3(self):
+        """Check if heater is gen 3."""
+        return self.sub_domain in [
+            6980,
+        ]
+
+    @property
+    def generation(self):
+        """Get the generation of the heater."""
+        if (self.is_gen1):
+            return 1
+        elif (self.is_gen3):
+            return 3
+        else:
+            return 2
 
     @property
     def generation(self):
@@ -588,6 +605,7 @@ def set_heater_values(heater_data, heater):
     heater.tibber_control = heater_data.get("tibberControl")
     heater.open_window = heater_data.get("open_window", heater_data.get("open"))
     heater.is_heating = heater_data.get("heatStatus", heater_data.get("heaterFlag"))
+
     try:
         heater.sub_domain = int(
             float(
@@ -598,6 +616,10 @@ def set_heater_values(heater_data, heater):
         )
     except ValueError:
         pass
+    
+    # If the heater is a gen 3 the temprature reported is multiplied by 100
+    if (heater.is_gen3):
+        heater.set_temp = round(heater.set_temp / 100)
 
 
 @dataclass
