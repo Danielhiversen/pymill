@@ -487,7 +487,8 @@ class Mill:
 
     async def set_heater_temp(self, device_id, set_temp):
         """Set heater temp."""
-        if heater.is_gen3:
+        heater = self.heaters.get(device_id)
+        if self.heater.is_gen3:
             payload = {
                 "subDomain": heater.sub_domain,
                 "deviceId": device_id,
@@ -533,7 +534,6 @@ class Room:
 @dataclass
 class MillDevice:
     """Mill Device."""
-
     name: str | None = None
     device_id: int | None = None
     available: bool | None = None
@@ -578,9 +578,9 @@ class Heater(MillDevice):
     @property
     def generation(self):
         """Get the generation of the heater."""
-        if self.is_gen1:
+        if (self.is_gen1):
             return 1
-        elif self.is_gen3:
+        elif (self.is_gen3):
             return 3
         else:
             return 2
@@ -681,6 +681,4 @@ class Sensor(MillDevice, _SensorAttr):
     @property
     def last_updated(self):
         """Last updated."""
-        return dt.datetime.fromtimestamp(self.report_time / 1000).astimezone(
-            dt.timezone.utc
-        )
+        return dt.datetime.fromtimestamp(self.report_time/1000).astimezone(dt.timezone.utc)
