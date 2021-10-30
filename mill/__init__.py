@@ -547,6 +547,7 @@ class MillDevice:
 @dataclass
 class Heater(MillDevice):
     """Representation of heater."""
+
     # pylint: disable=too-many-instance-attributes
 
     home_id: int | None = None
