@@ -1,5 +1,7 @@
 """Library to handle connection with mill."""
 # Based on https://pastebin.com/53Nk0wJA and Postman capturing from the app
+from __future__ import annotations
+
 import asyncio
 from base64 import b64encode
 from dataclasses import dataclass
@@ -414,9 +416,9 @@ class Mill:
         self.heaters[heater.device_id] = heater
 
     async def _update_consumption(self, heater):
-        now = dt.datetime.now()
-        if heater.last_consumption_update and (
-            now - heater.last_consumption_update
+        now = dt.datetime.now(dt.timezone.utc)
+        if heater.last_updated and (
+            now - heater.last_updated
         ) < MIN_TIME_BETWEEN_STATS_UPDATES + dt.timedelta(random.randint(0, 60)):
             return
 
@@ -442,7 +444,7 @@ class Mill:
 
         if cons0 is not None and cons0.get("code") == 0:
             heater.day_consumption = float(cons0.get("valueTotal"))
-            heater.last_consumption_update = now
+            heater.last_updated = now
 
         if cons3 is not None and cons3.get("code") == 0:
             heater.year_consumption = float(cons3.get("valueTotal"))
@@ -453,6 +455,18 @@ class Mill:
         if heater is None:
             _LOGGER.error("No such device")
             return
+        if heater.is_gen3:
+            if power_status is None:
+                return
+            payload = {
+                "subDomain": heater.sub_domain,
+                "deviceId": device_id,
+                "operation": "SWITCH",
+                "status": power_status,
+            }
+            await self.request("deviceControlGen3ForApp", payload)
+            return
+
         if fan_status is None:
             fan_status = heater.fan_status
         if power_status is None:
@@ -473,6 +487,15 @@ class Mill:
 
     async def set_heater_temp(self, device_id, set_temp):
         """Set heater temp."""
+        if heater.is_gen3:
+            payload = {
+                "subDomain": heater.sub_domain,
+                "deviceId": device_id,
+                "operation": "CHANGE_INDEPENDENT_TEMP",
+                "holdTemp": int(set_temp),
+            }
+            await self.request("deviceControlGen3ForApp", payload)
+            return
         payload = {
             "homeType": 0,
             "timeZoneNum": "+02:00",
@@ -507,30 +530,35 @@ class Room:
         return f"{self.__class__.__name__}({', '.join(items)})"
 
 
-class Heater:
+
+@dataclass
+class MillDevice:
+    """Mill Device."""
+    name: str | None = None
+    device_id: int | None = None
+    available: bool | None = None
+
+
+@dataclass
+class Heater(MillDevice):
     """Representation of heater."""
 
-    # pylint: disable=too-few-public-methods
-    name = None
-    device_id = None
-    home_id = None
-    available = False
-
-    current_temp = None
-    set_temp = None
-    fan_status = None
-    power_status = None
-    independent_device = True
-    room = None
-    open_window = None
-    is_heating = None
-    tibber_control = None
-    sub_domain = 5332
-    is_holiday = None
-    can_change_temp = 1
-    day_consumption = None
-    year_consumption = None
-    last_consumption_update = None
+    home_id: int | None = None
+    current_temp: float | None = None
+    set_temp: float | None = None
+    fan_status: float | None = None
+    power_status: float | None = None
+    independent_device: bool | None = True
+    room: float | None = None
+    open_window: int | None = None
+    is_heating: int | None = None
+    tibber_control: int | None = None
+    sub_domain: int = 5332
+    is_holiday: int | None = None
+    can_change_temp: float | None = None
+    day_consumption: float | None = None
+    year_consumption: float | None = None
+    last_updated: dt.datetime | None = None
 
     @property
     def is_gen1(self):
@@ -540,17 +568,38 @@ class Heater:
         ]
 
     @property
-    def generation(self):
-        """Check if heater is gen 1."""
-        return 1 if self.is_gen1 else 2
+    def is_gen3(self):
+        """Check if heater is gen 3."""
+        return self.sub_domain in [
+            6980,
+            6979,
+        ]
 
-    def __repr__(self):
-        items = (f"{k}={v}" for k, v in self.__dict__.items())
-        return f"{self.__class__.__name__}({', '.join(items)})"
+    @property
+    def generation(self):
+        """Get the generation of the heater."""
+        if (self.is_gen1):
+            return 1
+        elif (self.is_gen3):
+            return 3
+        else:
+            return 2
 
 
 def set_heater_values(heater_data, heater):
     """Set heater values from heater data"""
+    print(heater_data)
+    try:
+        heater.sub_domain = int(
+            float(
+                heater_data.get(
+                    "subDomain", heater_data.get("subDomainId", heater.sub_domain)
+                )
+            )
+        )
+    except ValueError:
+        pass
+
     try:
         heater.current_temp = float(heater_data.get("currentTemp"))
     except ValueError:
@@ -584,47 +633,52 @@ def set_heater_values(heater_data, heater):
             heater.set_temp = heater.room.sleep_temp
         elif heater.room.current_mode == 3:
             heater.set_temp = heater.room.away_temp
+
+    # If the heater is a gen 3 the temprature reported is multiplied by 100
+    if heater.is_gen3 and heater.set_temp is not None:
+        heater.set_temp = round(heater.set_temp / 100)
+
     heater.power_status = heater_data.get("powerStatus")
     heater.tibber_control = heater_data.get("tibberControl")
     heater.open_window = heater_data.get("open_window", heater_data.get("open"))
     heater.is_heating = heater_data.get("heatStatus", heater_data.get("heaterFlag"))
-    try:
-        heater.sub_domain = int(
-            float(
-                heater_data.get(
-                    "subDomain", heater_data.get("subDomainId", heater.sub_domain)
-                )
-            )
-        )
-    except ValueError:
-        pass
+
+    print(heater.independent_device, ".........")
 
 
 @dataclass
-class Sensor:
+class _SensorAttr:
     """Representation of sensor."""
 
     # pylint: disable=too-many-instance-attributes
-
-    name: str
-    device_id: int
-    available: bool
     current_temp: float
     humidity: float
     tvoc: float
     eco2: float
     battery: float
+    report_time: int
+
+
+@dataclass
+class Sensor(MillDevice, _SensorAttr):
+    """Representation of sensor."""
 
     @classmethod
     def init_from_response(cls, response):
         """Class method."""
         return cls(
-            response.get("deviceName"),
-            response.get("deviceId"),
-            response.get("deviceStatus") == 0,
-            response.get("currentTemp"),
-            response.get("humidity"),
-            response.get("tvoc"),
-            response.get("eco2"),
-            response.get("batteryPer"),
+            name=response.get("deviceName"),
+            device_id=response.get("deviceId"),
+            available=response.get("deviceStatus") == 0,
+            current_temp=response.get("currentTemp"),
+            humidity=response.get("humidity"),
+            tvoc=response.get("tvoc"),
+            eco2=response.get("eco2"),
+            battery=response.get("batteryPer"),
+            report_time=response.get("reportTime"),
         )
+
+    @property
+    def last_updated(self):
+        """Last updated."""
+        return dt.datetime.fromtimestamp(self.report_time/1000).astimezone(dt.timezone.utc)
