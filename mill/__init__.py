@@ -488,7 +488,7 @@ class Mill:
     async def set_heater_temp(self, device_id, set_temp):
         """Set heater temp."""
         heater = self.heaters.get(device_id)
-        if self.heater.is_gen3:
+        if heater.is_gen3:
             payload = {
                 "subDomain": heater.sub_domain,
                 "deviceId": device_id,
@@ -543,6 +543,7 @@ class MillDevice:
 @dataclass
 class Heater(MillDevice):
     """Representation of heater."""
+    # pylint: disable=too-many-instance-attributes
 
     home_id: int | None = None
     current_temp: float | None = None
@@ -581,10 +582,9 @@ class Heater(MillDevice):
         """Get the generation of the heater."""
         if self.is_gen1:
             return 1
-        elif self.is_gen3:
+        if self.is_gen3:
             return 3
-        else:
-            return 2
+        return 2
 
 
 def set_heater_values(heater_data, heater):
