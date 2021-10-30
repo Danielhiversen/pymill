@@ -408,7 +408,7 @@ class Mill:
 
     async def _update_heater_data(self, heater):
         payload = {"deviceId": heater.device_id}
-        _heater = await self.request("selectDevice", payload)
+        _heater = await self.request("selectDevice2020", payload)
         if _heater is None:
             self.heaters[heater.device_id].available = False
             return
@@ -492,9 +492,13 @@ class Mill:
             payload = {
                 "subDomain": heater.sub_domain,
                 "deviceId": device_id,
-                "operation": "CHANGE_INDEPENDENT_TEMP",
                 "holdTemp": int(set_temp),
             }
+            if heater.independent_device:
+                payload["operation"] = "CHANGE_INDEPENDENT_TEMP"
+            else:
+                payload["operation"] = "SINGLE_CONTROL"
+                payload["status"] = "1"
             await self.request("deviceControlGen3ForApp", payload)
             return
         payload = {
@@ -543,7 +547,6 @@ class MillDevice:
 @dataclass
 class Heater(MillDevice):
     """Representation of heater."""
-
     # pylint: disable=too-many-instance-attributes
 
     home_id: int | None = None
@@ -590,7 +593,6 @@ class Heater(MillDevice):
 
 def set_heater_values(heater_data, heater):
     """Set heater values from heater data"""
-    print(heater_data)
     try:
         heater.sub_domain = int(
             float(
@@ -628,6 +630,8 @@ def set_heater_values(heater_data, heater):
     # reporting their target temperature also via holidayTemp.
     if heater.independent_device or heater.is_holiday == 1:
         heater.set_temp = heater_data.get("holidayTemp")
+        if heater.is_gen3 and heater.set_temp is not None and heater.independent_device:
+            heater.set_temp = round(heater.set_temp / 100)
     elif heater.room is not None:
         if heater.room.current_mode == 1:
             heater.set_temp = heater.room.comfort_temp
@@ -636,16 +640,10 @@ def set_heater_values(heater_data, heater):
         elif heater.room.current_mode == 3:
             heater.set_temp = heater.room.away_temp
 
-    # If the heater is a gen 3 the temprature reported is multiplied by 100
-    if heater.is_gen3 and heater.set_temp is not None:
-        heater.set_temp = round(heater.set_temp / 100)
-
     heater.power_status = heater_data.get("powerStatus")
     heater.tibber_control = heater_data.get("tibberControl")
     heater.open_window = heater_data.get("open_window", heater_data.get("open"))
     heater.is_heating = heater_data.get("heatStatus", heater_data.get("heaterFlag"))
-
-    print(heater.independent_device, ".........")
 
 
 @dataclass
