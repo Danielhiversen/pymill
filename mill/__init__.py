@@ -567,7 +567,8 @@ class Heater(MillDevice):
     year_consumption: float | None = None
     last_updated: dt.datetime | None = None
 
-    # 863: Panel Gen 1 5316: New Panel Heater 5317: Oil Heater 5332: Convection Heater 5333: Socket 6933: Sense Air
+    # 863: Panel Gen 1 5316: New Panel Heater 5317: Oil Heater 
+    # 5332: Convection Heater 5333: Socket 6933: Sense Air
     # https://api.millheat.com/swagger-ui.html#/uds-controller/selectRoombyHome2020UsingPOST_7
 
     @property
