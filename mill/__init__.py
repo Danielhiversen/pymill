@@ -567,16 +567,14 @@ class Heater(MillDevice):
     year_consumption: float | None = None
     last_updated: dt.datetime | None = None
 
-    # 863: Panel Gen 1 5316: New Panel Heater 5317: Oil Heater 
+    # 863: Panel Gen 1 5316: New Panel Heater 5317: Oil Heater
     # 5332: Convection Heater 5333: Socket 6933: Sense Air
     # https://api.millheat.com/swagger-ui.html#/uds-controller/selectRoombyHome2020UsingPOST_7
 
     @property
     def is_gen1(self):
         """Check if heater is gen 1."""
-        return self.sub_domain in (
-            863,
-        )
+        return self.sub_domain in (863,)
 
     @property
     def is_gen2(self):
@@ -601,7 +599,7 @@ class Heater(MillDevice):
             return 1
         if self.is_gen2:
             return 2
-        if self.sub_domain in (6933, ):
+        if self.sub_domain in (6933,):
             return -1  # Mill Sense
         return 3
 
