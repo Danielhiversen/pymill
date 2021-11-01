@@ -590,7 +590,7 @@ class Heater(MillDevice):
     @property
     def is_gen3(self):
         """Check if heater is gen 3."""
-        self.generation == 3
+        return self.generation == 3
 
     @property
     def generation(self):
