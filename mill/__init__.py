@@ -417,7 +417,7 @@ class Mill:
         now = dt.datetime.now()
         if heater.last_consumption_update and (
             now - heater.last_consumption_update
-        ) < MIN_TIME_BETWEEN_STATS_UPDATES + dt.timedelta(random.randint(0, 60)):
+        ) < MIN_TIME_BETWEEN_STATS_UPDATES + dt.timedelta(seconds=random.randint(0, 60)):
             return
 
         payload = {
