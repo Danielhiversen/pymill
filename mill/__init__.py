@@ -23,7 +23,6 @@ API_ENDPOINT_1 = "https://eurouter.ablecloud.cn:9005/zc-account/v1/"
 API_ENDPOINT_2 = "https://eurouter.ablecloud.cn:9005/millService/v1/"
 API_ENDPOINT_STATS = "https://api.millheat.com/statistics/"
 DEFAULT_TIMEOUT = 10
-MIN_TIME_BETWEEN_UPDATES = dt.timedelta(seconds=5)
 MIN_TIME_BETWEEN_STATS_UPDATES = dt.timedelta(minutes=10)
 REQUEST_TIMEOUT = "300"
 
