@@ -126,7 +126,7 @@ class Mill:
             _LOGGER.error("No token")
             return None
 
-        _LOGGER.debug("Request %s %s" command, payload)
+        _LOGGER.debug("Request %s %s", command, payload)
 
         nonce = "".join(
             random.choice(string.ascii_uppercase + string.digits) for _ in range(16)
