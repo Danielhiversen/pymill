@@ -229,7 +229,7 @@ class Mill:
 
         result = await resp.text()
 
-        _LOGGER.debug("Result %s" result)
+        _LOGGER.debug("Result %s", result)
         data = json.loads(result)
         return data
 
