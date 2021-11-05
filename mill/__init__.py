@@ -126,7 +126,7 @@ class Mill:
             _LOGGER.error("No token")
             return None
 
-        _LOGGER.debug(command, payload)
+        _LOGGER.debug("Request %s %s" command, payload)
 
         nonce = "".join(
             random.choice(string.ascii_uppercase + string.digits) for _ in range(16)
@@ -168,7 +168,7 @@ class Mill:
 
         result = await resp.text()
 
-        _LOGGER.debug(result)
+        _LOGGER.debug("Result %s", result)
 
         if not result or result == '{"errorCode":0}':
             return None
@@ -196,7 +196,7 @@ class Mill:
 
     async def request_stats(self, command, payload, retry=3):
         """Request data."""
-        _LOGGER.debug(command, payload)
+        _LOGGER.debug("Request stats %s %s", command, payload)
         url = API_ENDPOINT_STATS + command
         json_data = json.dumps(payload)
         token = str(int(time.time() * 1000)) + "_" + str(self._user_id)
@@ -229,7 +229,7 @@ class Mill:
 
         result = await resp.text()
 
-        _LOGGER.debug(result)
+        _LOGGER.debug("Result %s" result)
         data = json.loads(result)
         return data
 
