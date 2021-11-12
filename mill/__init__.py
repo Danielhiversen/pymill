@@ -80,7 +80,7 @@ class Mill:
         }
         payload = {"account": self._username, "password": self._password}
         try:
-            with async_timeout.timeout(self._timeout):
+            async with async_timeout.timeout(self._timeout):
                 resp = await self.websession.post(
                     url, data=json.dumps(payload), headers=headers
                 )
@@ -153,7 +153,7 @@ class Mill:
             "X-Zc-Content-Length": str(len(payload)),
         }
         try:
-            with async_timeout.timeout(self._timeout):
+            async with async_timeout.timeout(self._timeout):
                 resp = await self.websession.post(
                     url, data=json.dumps(payload), headers=headers
                 )
@@ -214,7 +214,7 @@ class Mill:
             "milltoken": milltoken.decode(),
         }
         try:
-            with async_timeout.timeout(self._timeout):
+            async with async_timeout.timeout(self._timeout):
                 resp = await self.websession.post(url, data=json_data, headers=headers)
         except asyncio.TimeoutError:
             if retry < 1:
