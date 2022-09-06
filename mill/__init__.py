@@ -493,7 +493,7 @@ class Mill:
             payload = {
                 "subDomain": heater.sub_domain,
                 "deviceId": device_id,
-                "holdTemp": int(set_temp),
+                "holdTemp": float(set_temp),
             }
             if heater.independent_device:
                 payload["operation"] = "CHANGE_INDEPENDENT_TEMP"
