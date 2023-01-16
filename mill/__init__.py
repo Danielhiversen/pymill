@@ -25,6 +25,8 @@ API_ENDPOINT_STATS = "https://api.millheat.com/statistics/"
 DEFAULT_TIMEOUT = 10
 MIN_TIME_BETWEEN_STATS_UPDATES = dt.timedelta(minutes=10)
 REQUEST_TIMEOUT = "300"
+MIN_TEMP = 5
+MAX_TEMP = 35
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -645,7 +647,9 @@ def set_heater_values(heater_data, heater):
     if heater.independent_device or heater.is_holiday == 1:
         heater.set_temp = heater_data.get("holidayTemp")
         if heater.is_gen3 and heater.set_temp is not None and heater.independent_device:
-            heater.set_temp = round(heater.set_temp / 100)
+            divBy100 = heater.set_temp / 100
+            if heater.set_temp > MAX_TEMP and divBy100 >= MIN_TEMP:
+                heater.set_temp = round(divBy100, 1)
     elif heater.room is not None:
         if heater.room.current_mode == 1:
             heater.set_temp = heater.room.comfort_temp
