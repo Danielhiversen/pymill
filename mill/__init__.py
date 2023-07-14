@@ -1,4 +1,4 @@
-"""Library to handle connection with mill."""
+""" Library to handle connection with mill."""
 from __future__ import annotations
 
 import asyncio
@@ -9,6 +9,7 @@ import logging
 
 import aiohttp
 import async_timeout
+from typing import cast
 
 API_ENDPOINT = "https://api.millnorwaycloud.com/"
 DEFAULT_TIMEOUT = 10
@@ -19,7 +20,9 @@ _LOGGER = logging.getLogger(__name__)
 class Mill:
     """Class to communicate with the Mill api."""
 
-    def __init__(self, username, password, timeout=DEFAULT_TIMEOUT, websession=None) -> None
+    def __init__(
+        self, username, password, timeout=DEFAULT_TIMEOUT, websession=None
+    ) -> None:
         """Initialize the Mill connection."""
         if websession is None:
 
@@ -140,7 +143,7 @@ class Mill:
             await self.connect()
             return await self.request(url, payload, retry - 1, patch=patch)
         if "error" in result:
-            raise Exception(result)
+            raise Exception(result)  # pylint: disable=broad-exception-raised
         if "InvalidAuthTokenError" in result:
             _LOGGER.error("Invalid auth token, %s", result)
             if await self.connect():
@@ -212,6 +215,7 @@ class Mill:
         )
 
         if device_type in ("Sensors",):
+            device = cast(device, Sensor)
             device.current_temp = device_data.get("lastMetrics", {}).get("temperature")
             device.humidity = device_data.get("lastMetrics", {}).get("humidity")
             device.tvoc = device_data.get("lastMetrics", {}).get("tvoc")
@@ -220,6 +224,12 @@ class Mill:
             device.report_time = device_data.get("lastMetrics", {}).get("time")
 
         elif device_type in ("Heaters", "Sockets"):
+            device = (
+                cast(device, Sensor)
+                if device_type == "Sockets"
+                else cast(device, Heater)
+            )
+
             if device.last_updated and (
                 now - device.last_updated < dt.timedelta(seconds=15)
             ):
@@ -251,6 +261,11 @@ class Mill:
                 device_stats.get("deviceInfo", {}).get("totalPower", 0) / 1000.0
             )
             if room_data:
+                device = (
+                    cast(device, Sensor)
+                    if device_type == "Sockets"
+                    else cast(device, Heater)
+                )
                 device.tibber_control = (
                     room_data.get("controlSource", {}).get("tibber") == 1
                 )
