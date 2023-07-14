@@ -19,7 +19,7 @@ _LOGGER = logging.getLogger(__name__)
 class Mill:
     """Class to communicate with the Mill api."""
 
-    def __init__(self, username, password, timeout=DEFAULT_TIMEOUT, websession=None):
+    def __init__(self, username, password, timeout=DEFAULT_TIMEOUT, websession=None) -> None
         """Initialize the Mill connection."""
         if websession is None:
 
