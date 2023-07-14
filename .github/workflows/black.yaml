@@ -10,7 +10,7 @@ jobs:
   validate:
     runs-on: "ubuntu-latest"
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3
       - name: black
         if: github.event.pull_request.head.repo.full_name == github.repository
         uses: lgeiger/black-action@master
