@@ -21,6 +21,8 @@ _LOGGER = logging.getLogger(__name__)
 class Mill:
     """Class to communicate with the Mill api."""
 
+    # pylint: disable=too-many-instance-attributes
+
     def __init__(
         self,
         username,
@@ -318,6 +320,8 @@ class Mill:
 @dataclass(kw_only=True)
 class MillDevice:
     """Mill Device."""
+
+    # pylint: disable=too-many-instance-attributes
 
     name: str | None = None
     device_id: int | None = None
