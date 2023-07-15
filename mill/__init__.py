@@ -11,8 +11,10 @@ import aiohttp
 import async_timeout
 from typing import cast
 
+
 API_ENDPOINT = "https://api.millnorwaycloud.com/"
 DEFAULT_TIMEOUT = 10
+WINDOW_STATES = {0: "disabled", 3: "enabled_not_active", 2: "enabled_active"}
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -187,7 +189,6 @@ class Mill:
         await asyncio.gather(*tasks)
 
     async def _update_device(self, device_data, room_data=None):
-        window_states = {0: "disabled", 3: "enabled_not_active", 2: "enabled_active"}
         device_type = (
             device_data.get("deviceType", {}).get("parentType", {}).get("name")
         )
@@ -254,7 +255,7 @@ class Mill:
                 device_data.get("lastMetrics").get("powerStatus", 0) > 0
             )
             device.is_heating = device_data.get("lastMetrics").get("heaterFlag", 0) > 0
-            device.open_window = window_states.get(
+            device.open_window = WINDOW_STATES.get(
                 device_data.get("lastMetrics").get("openWindowsStatus")
             )
             device.day_consumption = (
@@ -378,6 +379,7 @@ class Mill:
         if isinstance(self.devices[device_id], Sensor):
             return "Sensors"
         _LOGGER.error("Unknown device type %s", self.devices[device_id])
+        return None
 
 
 @dataclass
