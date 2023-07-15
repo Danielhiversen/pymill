@@ -42,6 +42,7 @@ class Mill:
 
     async def connect(self, retry=2):
         """Connect to Mill."""
+        # pylint: disable=too-many-return-statements
         payload = {"login": self._username, "password": self._password}
         try:
             async with async_timeout.timeout(self._timeout):
@@ -108,6 +109,7 @@ class Mill:
 
     async def request(self, command, payload=None, retry=3, patch=False):
         """Request data."""
+        # pylint: disable=too-many-return-statements
         if self._token is None:
             _LOGGER.error("No token")
             return None
@@ -251,6 +253,7 @@ class Mill:
             device.power_status = (
                 device_data.get("lastMetrics").get("powerStatus", 0) > 0
             )
+            device.is_heating = device_data.get("lastMetrics").get("heaterFlag", 0) > 0
             device.open_window = window_states.get(
                 device_data.get("lastMetrics").get("openWindowsStatus")
             )
@@ -321,7 +324,7 @@ class Mill:
         return {
             key: val
             for key, val in self.devices.items()
-            if isinstance(val, Heater) or isinstance(val, Socket)
+            if isinstance(val, (Heater, Socket))
         }
 
     async def fetch_heater_and_sensor_data(self):
@@ -363,11 +366,11 @@ class Mill:
             self.devices[device_id].set_temp = set_temp
             self.devices[device_id].last_updated = dt.datetime.now()
 
-    def _find_device_type(self, device_id):
+    def _find_device_type(self, device_id) -> str | None:
         """Find device type."""
         if device_id not in self.devices:
             _LOGGER.error("Device id %s not found", device_id)
-            return
+            return None
         if isinstance(self.devices[device_id], Socket):
             return "Sockets"
         if isinstance(self.devices[device_id], Heater):
@@ -411,12 +414,14 @@ class Heater(MillDevice):
 
 @dataclass
 class Socket(Heater):
-    pass
+    """Representation of socket."""
 
 
 @dataclass
 class Sensor(MillDevice):
     """Representation of sensor."""
+
+    # pylint: disable=too-many-instance-attributes
 
     current_temp: float | None = None
     humidity: float | None = None
