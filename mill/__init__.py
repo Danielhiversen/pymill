@@ -301,7 +301,10 @@ class Mill:
             if not power_status:
                 self.devices[device_id].is_heating = False
             else:
-                self.devices[device_id].is_heating = self.devices[device_id].set_temp > self.devices[device_id].current_temp
+                self.devices[device_id].is_heating = (
+                    self.devices[device_id].set_temp
+                    > self.devices[device_id].current_temp
+                )
             self.devices[device_id].last_updated = dt.datetime.now()
 
     async def set_heater_temp(self, device_id, set_temp):
@@ -316,7 +319,9 @@ class Mill:
         }
         if await self.request(f"devices/{device_id}/settings", payload, patch=True):
             self.devices[device_id].set_temp = set_temp
-            self.devices[device_id].is_heating = set_temp > self.devices[device_id].current_temp
+            self.devices[device_id].is_heating = (
+                set_temp > self.devices[device_id].current_temp
+            )
             self.devices[device_id].last_updated = dt.datetime.now()
 
 
