@@ -3,11 +3,11 @@ from setuptools import setup
 setup(
     name="millheater",
     packages=["mill"],
-    install_requires=["aiohttp>=3.7.4,<4", "async_timeout>=3.0.0", "cryptography"],
+    install_requires=["aiohttp>=3.7.4,<4", "async_timeout>=3.0.0"],
     version="0.10.0",
     description="A python3 library to communicate with Mill",
     long_description="A python3 library to communicate with Mill",
-    python_requires=">=3.5.3",
+    python_requires=">=3.10",
     author="Daniel Hjelseth Hoyer",
     author_email="mail@dahoiv.net",
     url="https://github.com/Danielhiversen/pymill",

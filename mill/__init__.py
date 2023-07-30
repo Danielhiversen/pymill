@@ -1,41 +1,36 @@
 """Library to handle connection with mill."""
-# Based on https://pastebin.com/53Nk0wJA and Postman capturing from the app
 from __future__ import annotations
 
 import asyncio
-from base64 import b64encode
 from dataclasses import dataclass
 import datetime as dt
-import hashlib
 import json
 import logging
-import random
-import string
-import time
 
 import aiohttp
 import async_timeout
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import padding
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-API_ENDPOINT_1 = "https://eurouter.ablecloud.cn:9005/zc-account/v1/"
-API_ENDPOINT_2 = "https://eurouter.ablecloud.cn:9005/millService/v1/"
-API_ENDPOINT_STATS = "https://api.millheat.com/statistics/"
+API_ENDPOINT = "https://api.millnorwaycloud.com/"
 DEFAULT_TIMEOUT = 10
-MIN_TIME_BETWEEN_STATS_UPDATES = dt.timedelta(minutes=10)
-REQUEST_TIMEOUT = "300"
+WINDOW_STATES = {0: "disabled", 3: "enabled_not_active", 2: "enabled_active"}
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class Mill:
-    """Class to comunicate with the Mill api."""
+    """Class to communicate with the Mill api."""
 
-    # pylint: disable=too-many-instance-attributes, too-many-public-methods
+    # pylint: disable=too-many-instance-attributes
 
-    def __init__(self, username, password, timeout=DEFAULT_TIMEOUT, websession=None):
+    def __init__(
+        self,
+        username,
+        password,
+        timeout=DEFAULT_TIMEOUT,
+        websession=None,
+    ) -> None:
         """Initialize the Mill connection."""
+        self.devices: dict = {}
         if websession is None:
 
             async def _create_session():
@@ -45,44 +40,23 @@ class Mill:
             self.websession = loop.run_until_complete(_create_session())
         else:
             self.websession = websession
+
         self._timeout = timeout
         self._username = username
         self._password = password
         self._user_id = None
         self._token = None
-        self.rooms = {}
-        self.heaters = {}
-        self.sensors = {}
-        self._throttle_time = None
-        self._throttle_all_time = None
-
-        key = (
-            b"vO\xe4O\xe0G\xeb|$\x9d\x8375\xd6\x1bl\xca\x96'\x8f"
-            b"\x02\x06\xc8\n\xe5\x85/\x81\xd6\x0f\x93\xa0"
-        )
-        _iv = bytearray([10, 1, 11, 5, 4, 15, 7, 9, 23, 3, 1, 6, 8, 12, 13, 91])
-        self._cipher = Cipher(
-            algorithms.AES(key), modes.CBC(_iv), backend=default_backend()
-        )
+        self._migrated = False
 
     async def connect(self, retry=2):
         """Connect to Mill."""
         # pylint: disable=too-many-return-statements
-        url = API_ENDPOINT_1 + "login"
-        headers = {
-            "Content-Type": "application/x-zc-object",
-            "Connection": "Keep-Alive",
-            "X-Zc-Major-Domain": "seanywell",
-            "X-Zc-Msg-Name": "millService",
-            "X-Zc-Sub-Domain": "milltype",
-            "X-Zc-Seq-Id": "1",
-            "X-Zc-Version": "1",
-        }
-        payload = {"account": self._username, "password": self._password}
+        payload = {"login": self._username, "password": self._password}
         try:
             async with async_timeout.timeout(self._timeout):
                 resp = await self.websession.post(
-                    url, data=json.dumps(payload), headers=headers
+                    API_ENDPOINT + "customer/auth/sign-in",
+                    json=payload,
                 )
         except (asyncio.TimeoutError, aiohttp.ClientError):
             if retry < 1:
@@ -91,198 +65,173 @@ class Mill:
             return await self.connect(retry - 1)
 
         result = await resp.text()
-        if '"errorCode":3504' in result:
-            _LOGGER.error("Wrong password")
-            return False
 
-        if '"errorCode":3501' in result:
-            _LOGGER.error("Account does not exist")
-            return False
-
+        if "Incorrect login or password" in result:
+            if retry < 1 or self._migrated:
+                _LOGGER.error("Incorrect login or password, %s", result)
+                return False
+            payload = {
+                "login": {
+                    "type": "email",
+                    "value": self._username,
+                },
+                "password": self._password,
+            }
+            self._migrated = True
+            async with async_timeout.timeout(self._timeout):
+                resp = await self.websession.post(
+                    API_ENDPOINT + "cloud-migration/migrate-customer",
+                    json=payload,
+                )
+                _LOGGER.debug("Migrate customer %s", await resp.text())
+            await asyncio.sleep(10)
+            return await self.connect(retry - 1)
         data = json.loads(result)
-        token = data.get("token")
-        if token is None:
+        if (token := data.get("idToken")) is None:
             _LOGGER.error("No token")
             return False
+        self._token = token
 
-        user_id = data.get("userId")
-        if user_id is None:
+        if self._user_id is not None:
+            return True
+        async with async_timeout.timeout(self._timeout):
+            resp = await self.websession.get(
+                API_ENDPOINT + "customer/details",
+                headers=self._headers,
+            )
+        result = await resp.text()
+        data = json.loads(result)
+        if (user_id := data.get("id")) is None:
             _LOGGER.error("No user id")
             return False
-
-        self._token = token
         self._user_id = user_id
         return True
+
+    @property
+    def _headers(self):
+        return {
+            "Authorization": "Bearer " + self._token,
+        }
 
     async def close_connection(self):
         """Close the Mill connection."""
         await self.websession.close()
 
-    async def request(self, command, payload, retry=3):
+    async def request(self, command, payload=None, retry=3, patch=False):
         """Request data."""
         # pylint: disable=too-many-return-statements
-
         if self._token is None:
             _LOGGER.error("No token")
             return None
 
         _LOGGER.debug("Request %s %s", command, payload)
+        url = API_ENDPOINT + command
 
-        nonce = "".join(
-            random.choice(string.ascii_uppercase + string.digits) for _ in range(16)
-        )
-        url = API_ENDPOINT_2 + command
-        timestamp = int(time.time())
-        signature = hashlib.sha1(
-            str(REQUEST_TIMEOUT + str(timestamp) + nonce + self._token).encode("utf-8")
-        ).hexdigest()
-
-        headers = {
-            "Content-Type": "application/x-zc-object",
-            "Connection": "Keep-Alive",
-            "X-Zc-Major-Domain": "seanywell",
-            "X-Zc-Msg-Name": "millService",
-            "X-Zc-Sub-Domain": "milltype",
-            "X-Zc-Seq-Id": "1",
-            "X-Zc-Version": "1",
-            "X-Zc-Timestamp": str(timestamp),
-            "X-Zc-Timeout": REQUEST_TIMEOUT,
-            "X-Zc-Nonce": nonce,
-            "X-Zc-User-Id": str(self._user_id),
-            "X-Zc-User-Signature": signature,
-            "X-Zc-Content-Length": str(len(payload)),
-        }
         try:
             async with async_timeout.timeout(self._timeout):
-                resp = await self.websession.post(
-                    url, data=json.dumps(payload), headers=headers
-                )
+                if payload:
+                    if patch:
+                        resp = await self.websession.patch(
+                            url, json=payload, headers=self._headers
+                        )
+                    else:
+                        resp = await self.websession.post(
+                            url, json=payload, headers=self._headers
+                        )
+                else:
+                    resp = await self.websession.get(url, headers=self._headers)
         except asyncio.TimeoutError:
             if retry < 1:
-                _LOGGER.error("Timed out sending command to Mill: %s", command)
+                _LOGGER.error("Timed out sending command to Mill: %s", url)
                 return None
-            return await self.request(command, payload, retry - 1)
+            return await self.request(url, payload, retry - 1, patch=patch)
         except aiohttp.ClientError:
-            _LOGGER.error("Error sending command to Mill: %s", command, exc_info=True)
+            _LOGGER.error("Error sending command to Mill: %s", url, exc_info=True)
             return None
 
         result = await resp.text()
+        if "InvalidAuthTokenError" in result:
+            _LOGGER.debug("InvalidAuthTokenError, %s", result)
+            await self.connect()
+            return await self.request(url, payload, retry - 1, patch=patch)
+        if "error" in result:
+            raise Exception(result)  # pylint: disable=broad-exception-raised
+        if "InvalidAuthTokenError" in result:
+            _LOGGER.error("Invalid auth token, %s", result)
+            if await self.connect():
+                return await self.request(url, payload, retry - 1)
+            return None
 
         _LOGGER.debug("Result %s", result)
+        return json.loads(result)
 
-        if not result or result == '{"errorCode":0}':
-            return None
-
-        if "access token expire" in result or "invalid signature" in result:
-            if retry < 1:
-                return None
-            if not await self.connect():
-                return None
-            return await self.request(command, payload, retry - 1)
-
-        if '"error":"device offline"' in result:
-            if retry < 1:
-                _LOGGER.error("Failed to send request, %s", result)
-                return None
-            _LOGGER.debug("Failed to send request, %s. Retrying...", result)
-            await asyncio.sleep(3)
-            return await self.request(command, payload, retry - 1)
-
-        if "errorCode" in result:
-            _LOGGER.error("Failed to send request, %s", result)
-            return None
-        data = json.loads(result)
-        return data
-
-    async def request_stats(self, command, payload, retry=3):
+    async def update_devices(self):
         """Request data."""
-        _LOGGER.debug("Request stats %s %s", command, payload)
-        url = API_ENDPOINT_STATS + command
-        json_data = json.dumps(payload)
-        token = str(int(time.time() * 1000)) + "_" + str(self._user_id)
-        padder = padding.PKCS7(128).padder()
-        data = padder.update(token.encode()) + padder.finalize()
-        encryptor = self._cipher.encryptor()
-        milltoken = b64encode(encryptor.update(data) + encryptor.finalize())
-
-        headers = {
-            "accept-encoding": "gzip",
-            "accept-language": "en-US,en;q=0.8",
-            "connection": "Keep-Alive",
-            "content-length": str(len(json_data)),
-            "content-type": "application/json",
-            "milltoken": milltoken.decode(),
-        }
-        try:
-            async with async_timeout.timeout(self._timeout):
-                resp = await self.websession.post(url, data=json_data, headers=headers)
-        except asyncio.TimeoutError:
-            if retry < 1:
-                _LOGGER.error("Timed out sending stats command to Mill: %s", command)
-                return None
-            return await self.request_stats(command, payload, retry - 1)
-        except aiohttp.ClientError:
-            _LOGGER.error(
-                "Error sending stats command to Mill: %s", command, exc_info=True
-            )
-            return None
-
-        result = await resp.text()
-
-        _LOGGER.debug("Result %s", result)
-        data = json.loads(result)
-        return data
-
-    async def get_home_list(self):
-        """Request data."""
-        resp = await self.request("selectHomeList", "{}")
+        resp = await self.request("houses")
         if resp is None:
             return []
-        return resp.get("homeList", [])
-
-    async def update_rooms(self):
-        """Request data."""
-        homes = await self.get_home_list()
+        homes = resp.get("ownHouses", [])
+        tasks = []
         for home in homes:
-            payload = {"homeId": home.get("homeId"), "timeZoneNum": "+01:00"}
-            data = await self.request("selectRoombyHome", payload)
-            rooms = data.get("roomInfo", [])
-            for _room in rooms:
-                _id = _room.get("roomId")
-                room = self.rooms.get(_id, Room())
-                room.room_id = _id
-                room.comfort_temp = _room.get("comfortTemp")
-                room.away_temp = _room.get("awayTemp")
-                room.sleep_temp = _room.get("sleepTemp")
-                room.name = _room.get("roomName")
-                room.current_mode = _room.get("currentMode")
-                room.heat_status = _room.get("heatStatus")
-                room.home_name = data.get("homeName")
-                room.avg_temp = _room.get("avgTemp")
+            tasks.append(self._update_home(home))
+        await asyncio.gather(*tasks)
 
-                self.rooms[_id] = room
-                payload = {"roomId": _room.get("roomId"), "timeZoneNum": "+01:00"}
-                room_device = await self.request("selectDevicebyRoom", payload)
-                # room_device = await self.request("selectDevicebyRoom2020", payload)
+    async def _update_home(self, home):
+        independent_devices_data = await self.request(
+            f"/houses/{home.get('id')}/devices/independent"
+        )
+        tasks = []
+        for device in independent_devices_data.get("items", []):
+            tasks.append(self._update_device(device))
 
-                room.always = room_device.get("always")
-                room.backHour = room_device.get("backHour")
-                room.backMinute = room_device.get("backMinute")
+        for room in await self.request(f"houses/{home.get('id')}/devices"):
+            tasks.append(self._update_room(room))
+        await asyncio.gather(*tasks)
 
-                if room_device is None:
-                    continue
-                heater_info = room_device.get("deviceInfo", [])
-                for _heater in heater_info:
-                    _id = _heater.get("deviceId")
-                    heater = self.heaters.get(_id, Heater())
-                    heater.device_id = _id
-                    heater.independent_device = False
-                    heater.can_change_temp = _heater.get("canChangeTemp")
-                    heater.name = _heater.get("deviceName")
-                    heater.room = room
-                    self.heaters[_id] = heater
-                    if heater.home_id is None:
-                        heater.home_id = home.get("homeId")
+    async def _update_room(self, room):
+        room_data = await self.request(f"rooms/{room.get('roomId')}/devices")
+
+        tasks = []
+        for device in room.get("devices", []):
+            tasks.append(self._update_device(device, room_data))
+        await asyncio.gather(*tasks)
+
+    async def _update_device(self, device_data, room_data=None):
+        device_type = (
+            device_data.get("deviceType", {}).get("parentType", {}).get("name")
+        )
+        _id = device_data.get("deviceId")
+
+        if device_type in ("Heaters", "Sockets"):
+            now = dt.datetime.now()
+            if (
+                _id in self.devices
+                and self.devices[_id].last_fetched
+                and (now - self.devices[_id].last_fetched < dt.timedelta(seconds=15))
+            ):
+                return
+            device_stats = await self.request(
+                f"devices/{_id}/statistics",
+                {
+                    "period": "monthly",
+                    "year": now.year,
+                    "month": 1,
+                    "day": 1,
+                },
+            )
+            if device_type == "Heaters":
+                self.devices[_id] = Heater.init_from_response(
+                    device_data, room_data, device_stats
+                )
+            else:
+                self.devices[_id] = Socket.init_from_response(
+                    device_data, room_data, device_stats
+                )
+        elif device_type in ("Sensors",):
+            self.devices[_id] = Sensor.init_from_response(device_data)
+        else:
+            _LOGGER.error("Unsupported device, %s %s", device_type, device_data)
+            return
 
     async def set_room_temperatures_by_name(
         self, room_name, sleep_temp=None, comfort_temp=None, away_temp=None
@@ -290,411 +239,227 @@ class Mill:
         """Set room temps by name."""
         if sleep_temp is None and comfort_temp is None and away_temp is None:
             return
-        for room_id, _room in self.rooms.items():
-            if _room.name.lower().strip() == room_name.lower().strip():
+        for heater in self.devices.values():
+            if heater.room_name.lower().strip() == room_name.lower().strip():
                 await self.set_room_temperatures(
-                    room_id, sleep_temp, comfort_temp, away_temp
+                    heater.room_id,
+                    sleep_temp,
+                    comfort_temp,
+                    away_temp,
                 )
                 return
         _LOGGER.error("Could not find a room with name %s", room_name)
 
     async def set_room_temperatures(
-        self, room_id, sleep_temp=None, comfort_temp=None, away_temp=None
+        self,
+        room_id,
+        sleep_temp=None,
+        comfort_temp=None,
+        away_temp=None,
     ):
         """Set room temps."""
         if sleep_temp is None and comfort_temp is None and away_temp is None:
             return
-        room = self.rooms.get(room_id)
-        if room is None:
-            _LOGGER.error("No such device")
-            return
-        room.sleep_temp = sleep_temp if sleep_temp else room.sleep_temp
-        room.away_temp = away_temp if away_temp else room.away_temp
-        room.comfort_temp = comfort_temp if comfort_temp else room.comfort_temp
-        payload = {
-            "roomId": room_id,
-            "sleepTemp": room.sleep_temp,
-            "comfortTemp": room.comfort_temp,
-            "awayTemp": room.away_temp,
-        }
-        await self.request("changeRoomModeTempInfoAway", payload)
-        self.rooms[room_id] = room
+        payload = {}
+        if sleep_temp:
+            payload["roomSleepTemperature"] = sleep_temp
+        if away_temp:
+            payload["roomAwayTemperature"] = away_temp
+        if comfort_temp:
+            payload["roomComfortTemperature"] = comfort_temp
 
-    async def set_room_mode(self, room_id, mode=None, hour=0, minute=0):
-        """Set room program override."""
-
-        if mode is None:
-            _LOGGER.error(
-                "Need to define mode 0 (normal), 1 (comfort), 2 (sleep), 3 (away)"
-            )
-            return
-
-        room = self.rooms.get(room_id)
-
-        if room is None:
-            _LOGGER.error("No such device")
-            return
-
-        room.backHour = hour
-        room.backMinute = minute
-        room.always = 0
-
-        if hour == 0 and minute == 0:
-            room.always = 1
-
-        payload = {
-            "roomId": room_id,
-            "hour": room.backHour,
-            "minute": room.backMinute,
-            "mode": mode,
-            "always": room.always,
-            "timeZoneNum": "+02:00",
-        }
-
-        await self.request("changeRoomMode", payload)
-        self.rooms[room_id] = room
+        await self.request(f"rooms/{room_id}/temperature", payload, patch=True)
 
     async def fetch_heater_data(self):
         """Request data."""
-        if not self.heaters:
-            await self.update_rooms()
-
-        await self.update_heaters()
-        return self.heaters
+        await self.update_devices()
+        return {
+            key: val
+            for key, val in self.devices.items()
+            if isinstance(val, (Heater, Socket))
+        }
 
     async def fetch_heater_and_sensor_data(self):
         """Request data."""
-        if not self.heaters:
-            await self.update_rooms()
+        await self.update_devices()
+        return self.devices
 
-        await self.update_heaters()
-        return {**self.heaters, **self.sensors}
-
-    async def update_heaters(self):
-        """Request data."""
-        tasks = []
-        homes = await self.get_home_list()
-        for home in homes:
-            tasks.append(self._update_independent_devices(home))
-
-        for heater in self.heaters.values():
-            tasks.append(self._update_consumption(heater))
-            if heater.independent_device:
-                continue
-            tasks.append(self._update_heater_data(heater))
-        await asyncio.gather(*tasks)
-
-    async def _update_independent_devices(self, home):
-        payload = {"homeId": home.get("homeId")}
-        data = await self.request("getIndependentDevices2020", payload)
-        if data is None:
-            return
-        dev_data = data.get("deviceInfo", [])
-        if not dev_data:
-            return
-        for dev in dev_data:
-            _id = dev.get("deviceId")
-
-            if dev["subDomainId"] in (6933,):
-                self.sensors[_id] = Sensor.init_from_response(dev)
-            else:
-                heater = self.heaters.get(_id, Heater())
-                heater.device_id = _id
-                set_heater_values(dev, heater)
-                self.heaters[_id] = heater
-                if heater.home_id is None:
-                    heater.home_id = home.get("homeId")
-
-    async def _update_heater_data(self, heater):
-        payload = {"deviceId": heater.device_id}
-        _heater = await self.request("selectDevice2020", payload)
-        if _heater is None:
-            self.heaters[heater.device_id].available = False
-            return
-        set_heater_values(_heater, heater)
-        self.heaters[heater.device_id] = heater
-
-    async def _update_consumption(self, heater):
-        now = dt.datetime.now(dt.timezone.utc)
-        if heater.last_updated and (
-            now - heater.last_updated
-        ) < MIN_TIME_BETWEEN_STATS_UPDATES + dt.timedelta(
-            seconds=random.randint(0, 60)
-        ):
-            return
-
-        payload = {
-            "dateType": None,
-            "dateStr": now.strftime("%Y-%m-%d"),
-            "timeZone": "GMT+02:00",
-            "haveSensor": 1,
-            "deviceId": heater.device_id,
-        }
-
-        tasks = []
-        for date_type in [0, 3]:
-            payload["dateType"] = date_type
-            tasks.append(
-                self.request_stats(
-                    "statisticDeviceForAndroid",
-                    payload.copy(),
-                )
-            )
-
-        (cons0, cons3) = await asyncio.gather(*tasks)
-
-        if cons0 is not None and cons0.get("code") == 0:
-            heater.day_consumption = float(cons0.get("valueTotal"))
-            heater.last_updated = now
-
-        if cons3 is not None and cons3.get("code") == 0:
-            heater.year_consumption = float(cons3.get("valueTotal"))
-
-    async def heater_control(self, device_id, fan_status=None, power_status=None):
+    async def heater_control(self, device_id: str, power_status: bool):
         """Set heater temps."""
-        heater = self.heaters.get(device_id)
-        if heater is None:
-            _LOGGER.error("No such device")
+        if device_id not in self.devices:
+            _LOGGER.error("Device id %s not found", device_id)
             return
-        if heater.is_gen3:
-            if power_status is None:
-                return
-            payload = {
-                "subDomain": heater.sub_domain,
-                "deviceId": device_id,
-                "operation": "SWITCH",
-                "status": power_status,
-            }
-            await self.request("deviceControlGen3ForApp", payload)
-            return
-
-        if fan_status is None:
-            fan_status = heater.fan_status
-        if power_status is None:
-            power_status = heater.power_status
-        operation = 0 if fan_status == heater.fan_status else 4
         payload = {
-            "subDomain": heater.sub_domain,
-            "deviceId": device_id,
-            "testStatus": 1,
-            "operation": operation,
-            "status": power_status,
-            "windStatus": fan_status,
-            "holdTemp": heater.set_temp,
-            "tempType": 0,
-            "powerLevel": 0,
+            "deviceType": self.devices[device_id].device_type,
+            "enabled": power_status,
+            "settings": {
+                "operation_mode": "control_individually" if power_status > 0 else "off"
+            },
         }
-        await self.request("deviceControl", payload)
+        if await self.request(f"devices/{device_id}/settings", payload, patch=True):
+            self.devices[device_id].power_status = power_status
+            if not power_status:
+                self.devices[device_id].is_heating = False
+            else:
+                self.devices[device_id].is_heating = (
+                    self.devices[device_id].set_temp
+                    > self.devices[device_id].current_temp
+                )
+            self.devices[device_id].last_fetched = dt.datetime.now()
 
     async def set_heater_temp(self, device_id, set_temp):
         """Set heater temp."""
-        heater = self.heaters.get(device_id)
-        if heater.is_gen3:
-            payload = {
-                "subDomain": heater.sub_domain,
-                "deviceId": device_id,
-                "holdTemp": float(set_temp),
-            }
-            if heater.independent_device:
-                payload["operation"] = "CHANGE_INDEPENDENT_TEMP"
-            else:
-                payload["operation"] = "SINGLE_CONTROL"
-                payload["status"] = "1"
-            await self.request("deviceControlGen3ForApp", payload)
-            return
         payload = {
-            "homeType": 0,
-            "timeZoneNum": "+02:00",
-            "deviceId": device_id,
-            "value": int(set_temp),
-            "key": "holidayTemp",
+            "deviceType": self.devices[device_id].device_type,
+            "enabled": True,
+            "settings": {
+                "operation_mode": "control_individually",
+                "temperature_normal": set_temp,
+            },
         }
-        await self.request("changeDeviceInfo", payload)
+        if await self.request(f"devices/{device_id}/settings", payload, patch=True):
+            self.devices[device_id].set_temp = set_temp
+            self.devices[device_id].is_heating = (
+                set_temp > self.devices[device_id].current_temp
+            )
+            self.devices[device_id].last_fetched = dt.datetime.now()
 
 
-class Room:
-    """Representation of room."""
-
-    # pylint: disable=too-few-public-methods
-
-    name = None
-    room_id = None
-    comfort_temp = None
-    away_temp = None
-    sleep_temp = None
-    is_offline = None
-    heat_status = None
-    home_name = None
-    avg_temp = None  # current temperature in the room
-    current_mode = None
-    always = None
-    backHour = None
-    backMinute = None
-
-    def __repr__(self):
-        items = (f"{k}={v}" for k, v in self.__dict__.items())
-        return f"{self.__class__.__name__}({', '.join(items)})"
-
-
-@dataclass
+@dataclass(kw_only=True)
 class MillDevice:
     """Mill Device."""
 
+    # pylint: disable=too-many-instance-attributes
+
     name: str | None = None
-    device_id: int | None = None
+    device_id: str | None = None
     available: bool | None = None
+    model: str | None = None
+    report_time: int | None = None
+    data: dict | None = None
+    room_data: dict | None = None
+    stats: dict | None = None
+
+    @classmethod
+    def init_from_response(
+        cls,
+        device_data: dict,
+        room_data: dict | None = None,
+        device_stats: dict | None = None,
+    ) -> MillDevice:
+        """Class method."""
+        return cls(
+            name=device_data.get("customName"),
+            device_id=device_data.get("deviceId"),
+            available=device_data.get("isConnected"),
+            model=device_data.get("deviceType", {}).get("childType", {}).get("name"),
+            report_time=device_data.get("lastMetrics", {}).get("time"),
+            data=device_data,
+            room_data=room_data,
+            stats=device_stats,
+        )
+
+    @property
+    def device_type(self) -> str:
+        """Return device type."""
+        return "unknown"
+
+    @property
+    def last_updated(self) -> dt.datetime:
+        """Last updated."""
+        if self.report_time is None:
+            return dt.datetime.fromtimestamp(0).astimezone(dt.timezone.utc)
+        return dt.datetime.fromtimestamp(self.report_time / 1000).astimezone(
+            dt.timezone.utc
+        )
 
 
-@dataclass
+@dataclass()
 class Heater(MillDevice):
     """Representation of heater."""
 
     # pylint: disable=too-many-instance-attributes
 
-    home_id: int | None = None
     current_temp: float | None = None
-    set_temp: float | None = None
-    fan_status: float | None = None
-    power_status: float | None = None
-    independent_device: bool | None = True
-    room: float | None = None
-    open_window: int | None = None
-    is_heating: int | None = None
-    tibber_control: int | None = None
-    sub_domain: int = 5332
-    is_holiday: int | None = None
-    can_change_temp: float | None = None
     day_consumption: float | None = None
+    home_id: str | None = None
+    independent_device: bool | None = None
+    is_heating: bool | None = None
+    last_fetched: dt.datetime | None = None
+    open_window: str | None = None
+    power_status: bool | None = None
+    room_avg_temp: float | None = None
+    room_id: str | None = None
+    room_name: str | None = None
+    set_temp: float | None = None
+    tibber_control: bool | None = None
     year_consumption: float | None = None
-    last_updated: dt.datetime | None = None
 
-    # 863: Panel Gen 1 5316: New Panel Heater 5317: Oil Heater
-    # 5332: Convection Heater 5333: Socket 6933: Sense Air
-    # https://api.millheat.com/swagger-ui.html#/uds-controller/selectRoombyHome2020UsingPOST_7
-
-    @property
-    def is_gen1(self):
-        """Check if heater is gen 1."""
-        return self.sub_domain in (863,)
-
-    @property
-    def is_gen2(self):
-        """Check if heater is gen 1."""
-        return self.sub_domain in (
-            5316,
-            5317,
-            5332,
-            5333,
-        )
-
-    @property
-    def is_gen3(self):
-        """Check if heater is gen 3."""
-        return self.generation == 3
-
-    @property
-    def generation(self):
-        """Get the generation of the heater."""
-        _LOGGER.debug("SubDomain %s", self.sub_domain)
-        if self.is_gen1:
-            return 1
-        if self.is_gen2:
-            return 2
-        if self.sub_domain in (6933,):
-            return -1  # Mill Sense
-        return 3
-
-
-def set_heater_values(heater_data, heater):
-    """Set heater values from heater data"""
-    try:
-        heater.sub_domain = int(
-            float(
-                heater_data.get(
-                    "subDomain", heater_data.get("subDomainId", heater.sub_domain)
-                )
+    def __post_init__(self) -> None:
+        """Post init."""
+        if self.data:
+            last_metrics = self.data.get("lastMetrics", {})
+            self.current_temp = last_metrics.get("temperatureAmbient")
+            self.day_consumption = self.data.get("energyUsageForCurrentDay", 0) / 1000.0
+            self.is_heating = last_metrics.get("heaterFlag", 0) > 0
+            self.open_window = WINDOW_STATES.get(last_metrics.get("openWindowsStatus"))
+            self.power_status = last_metrics.get("powerStatus", 0) > 0
+            self.set_temp = last_metrics.get("temperature")
+        if self.stats:
+            self.year_consumption = (
+                self.stats.get("deviceInfo", {}).get("totalPower", 0) / 1000.0
             )
-        )
-    except ValueError:
-        pass
+        if self.room_data:
+            self.tibber_control = (
+                self.room_data.get("controlSource", {}).get("tibber") == 1
+            )
+            self.home_id = self.room_data.get("houseId")
+            self.room_id = self.room_data.get("id")
+            self.room_name = self.room_data.get("name")
+            self.room_avg_temp = self.room_data.get("averageTemperature")
+            self.independent_device = False
+        else:
+            self.independent_device = True
 
-    try:
-        heater.current_temp = float(heater_data.get("currentTemp"))
-    except ValueError:
-        heater.current_temp = None
-    else:
-        if heater.current_temp > 90.0:
-            heater.current_temp = None
-    heater.device_status = heater_data.get("deviceStatus")
-    heater.available = heater.device_status == 0
-    heater.name = heater_data.get("deviceName")
-    heater.fan_status = heater_data.get("fanStatus")
-    heater.is_holiday = heater_data.get("isHoliday")
-
-    # Room assigned devices don't report canChangeTemp
-    # in selectDevice response.
-    if heater.room is None:
-        heater.can_change_temp = heater_data.get("canChangeTemp")
-
-    # Independent devices report their target temperature via
-    # holidayTemp value. But isHoliday is still set to 0.
-    # Room assigned devices may have set "Control Device individually"
-    # which effectively set their isHoliday value to 1.
-    # In this mode they behave similar to independent devices
-    # reporting their target temperature also via holidayTemp.
-    if heater.independent_device or heater.is_holiday == 1:
-        heater.set_temp = heater_data.get("holidayTemp")
-        if heater.is_gen3 and heater.set_temp is not None and heater.independent_device:
-            heater.set_temp = round(heater.set_temp / 100)
-    elif heater.room is not None:
-        if heater.room.current_mode == 1:
-            heater.set_temp = heater.room.comfort_temp
-        elif heater.room.current_mode == 2:
-            heater.set_temp = heater.room.sleep_temp
-        elif heater.room.current_mode == 3:
-            heater.set_temp = heater.room.away_temp
-
-    heater.power_status = heater_data.get("powerStatus")
-    heater.tibber_control = heater_data.get("tibberControl")
-    heater.open_window = heater_data.get("open_window", heater_data.get("open"))
-    heater.is_heating = heater_data.get("heatStatus", heater_data.get("heaterFlag"))
+    @property
+    def device_type(self) -> str:
+        """Return device type."""
+        return "Heaters"
 
 
-@dataclass
-class _SensorAttr:
+@dataclass()
+class Socket(Heater):
+    """Representation of socket."""
+
+    @property
+    def device_type(self) -> str:
+        """Return device type."""
+        return "Sockets"
+
+
+@dataclass()
+class Sensor(MillDevice):
     """Representation of sensor."""
 
     # pylint: disable=too-many-instance-attributes
-    current_temp: float
-    humidity: float
-    tvoc: float
-    eco2: float
-    battery: float
-    report_time: int
 
+    current_temp: float | None = None
+    humidity: float | None = None
+    tvoc: float | None = None
+    eco2: float | None = None
+    battery: float | None = None
 
-@dataclass
-class Sensor(MillDevice, _SensorAttr):
-    """Representation of sensor."""
-
-    @classmethod
-    def init_from_response(cls, response):
-        """Class method."""
-        return cls(
-            name=response.get("deviceName"),
-            device_id=response.get("deviceId"),
-            available=response.get("deviceStatus") == 0,
-            current_temp=response.get("currentTemp"),
-            humidity=response.get("humidity"),
-            tvoc=response.get("tvoc"),
-            eco2=response.get("eco2"),
-            battery=response.get("batteryPer"),
-            report_time=response.get("reportTime"),
-        )
+    def __post_init__(self) -> None:
+        """Post init."""
+        if self.data:
+            last_metrics = self.data.get("lastMetrics", {})
+            self.current_temp = last_metrics.get("temperature")
+            self.humidity = last_metrics.get("humidity")
+            self.tvoc = last_metrics.get("tvoc")
+            self.eco2 = last_metrics.get("eco2")
+            self.battery = last_metrics.get("batteryPercentage")
 
     @property
-    def last_updated(self):
-        """Last updated."""
-        return dt.datetime.fromtimestamp(self.report_time / 1000).astimezone(
-            dt.timezone.utc
-        )
+    def device_type(self) -> str:
+        """Return device type."""
+        return "Sensors"
