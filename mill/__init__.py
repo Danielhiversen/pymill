@@ -132,11 +132,15 @@ class Mill:
                 if payload:
                     if patch:
                         resp = await self.websession.patch(
-                            url, json=payload, headers=self._headers,
+                            url,
+                            json=payload,
+                            headers=self._headers,
                         )
                     else:
                         resp = await self.websession.post(
-                            url, json=payload, headers=self._headers,
+                            url,
+                            json=payload,
+                            headers=self._headers,
                         )
                 else:
                     resp = await self.websession.get(url, headers=self._headers)
@@ -357,7 +361,7 @@ class MillDevice:
             name=device_data.get("customName"),
             device_id=device_data.get("deviceId"),
             available=device_data.get("isConnected"),
-            model=device_data   .get("deviceType", {}).get("childType", {}).get("name"),
+            model=device_data.get("deviceType", {}).get("childType", {}).get("name"),
             report_time=device_data.get("lastMetrics", {}).get("time"),
             data=device_data,
             room_data=room_data,
