@@ -132,11 +132,15 @@ class Mill:
                 if payload:
                     if patch:
                         resp = await self.websession.patch(
-                            url, json=payload, headers=self._headers
+                            url,
+                            json=payload,
+                            headers=self._headers,
                         )
                     else:
                         resp = await self.websession.post(
-                            url, json=payload, headers=self._headers
+                            url,
+                            json=payload,
+                            headers=self._headers,
                         )
                 else:
                     resp = await self.websession.get(url, headers=self._headers)
@@ -151,16 +155,12 @@ class Mill:
 
         result = await resp.text()
         if "InvalidAuthTokenError" in result:
-            _LOGGER.debug("InvalidAuthTokenError, %s", result)
-            await self.connect()
-            return await self.request(url, payload, retry - 1, patch=patch)
+            _LOGGER.debug("Invalid auth token, %s", result)
+            if await self.connect():
+                return await self.request(url, payload, retry - 1, patch=patch)
+            return None
         if "error" in result:
             raise Exception(result)  # pylint: disable=broad-exception-raised
-        if "InvalidAuthTokenError" in result:
-            _LOGGER.error("Invalid auth token, %s", result)
-            if await self.connect():
-                return await self.request(url, payload, retry - 1)
-            return None
 
         _LOGGER.debug("Result %s", result)
         return json.loads(result)
@@ -184,12 +184,19 @@ class Mill:
         for device in independent_devices_data.get("items", []):
             tasks.append(self._update_device(device))
 
-        for room in await self.request(f"houses/{home.get('id')}/devices"):
-            tasks.append(self._update_room(room))
+        rooms_data = await self.request(f"houses/{home.get('id')}/devices")
+        if rooms_data is not None:
+            for room in rooms_data:
+                if not isinstance(room, dict):
+                    _LOGGER.debug("Unexpected room data %s", room)
+                    continue
+                tasks.append(self._update_room(room))
         await asyncio.gather(*tasks)
 
     async def _update_room(self, room):
         room_data = await self.request(f"rooms/{room.get('roomId')}/devices")
+        if room_data is None:
+            return
 
         tasks = []
         for device in room.get("devices", []):
@@ -219,6 +226,8 @@ class Mill:
                     "day": 1,
                 },
             )
+            if device_stats is None:
+                return
             if device_type == "Heaters":
                 self.devices[_id] = Heater.init_from_response(
                     device_data, room_data, device_stats
