@@ -124,7 +124,7 @@ class Mill:
 
     async def request(self, command, payload=None, retry=3, patch=False):
         """Request data."""
-        # pylint: disable=too-many-return-statements
+        # pylint: disable=too-many-return-statements, too-many-branches
         if self._token is None:
             _LOGGER.error("No token")
             return None
@@ -178,10 +178,11 @@ class Mill:
         return json.loads(result)
 
     async def request_cahced(self, url):
+        """Request data and cache."""
         res = None
         if url in self._cached_data:
-            res, ts = self._cached_data[url]
-            if dt.datetime.now() - ts < dt.timedelta(minutes=10):
+            res, timestamp = self._cached_data[url]
+            if dt.datetime.now() - timestamp < dt.timedelta(minutes=10):
                 return res
         try:
             res = await self.request(url)
