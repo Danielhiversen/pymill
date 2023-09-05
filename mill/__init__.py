@@ -18,7 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class TooManyRequests(Exception):
-    """Too many requests."""
+    """Too many requests Exception."""
 
 
 class Mill:
