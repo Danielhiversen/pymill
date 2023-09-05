@@ -17,6 +17,10 @@ WINDOW_STATES = {0: "disabled", 3: "enabled_not_active", 2: "enabled_active"}
 _LOGGER = logging.getLogger(__name__)
 
 
+class TooManyRequests(Exception):
+    """Too many requests."""
+
+
 class Mill:
     """Class to communicate with the Mill api."""
 
@@ -47,6 +51,7 @@ class Mill:
         self._user_id = None
         self._token = None
         self._migrated = False
+        self._cached_data = {}
 
     async def connect(self, retry=2):
         """Connect to Mill."""
@@ -154,6 +159,8 @@ class Mill:
             return None
 
         result = await resp.text()
+        if "Too Many Requests" in result:
+            raise TooManyRequests(result)
         if "InvalidAuthTokenError" in result:
             _LOGGER.debug("Invalid auth token, %s", result)
             if await self.connect():
@@ -161,9 +168,28 @@ class Mill:
             return None
         if "error" in result:
             raise Exception(result)  # pylint: disable=broad-exception-raised
+        if "InvalidAuthTokenError" in result:
+            _LOGGER.error("Invalid auth token, %s", result)
+            if await self.connect():
+                return await self.request(url, payload, retry - 1)
+            return None
 
         _LOGGER.debug("Result %s", result)
         return json.loads(result)
+
+    async def request_cahced(self, url):
+        res = None
+        if url in self._cached_data:
+            res, ts = self._cached_data[url]
+            if dt.datetime.now() - ts < dt.timedelta(minutes=10):
+                return res
+        try:
+            res = await self.request(url)
+            self._cached_data[url] = (res, dt.datetime.now())
+        except TooManyRequests:
+            if res is None:
+                raise
+        return res
 
     async def update_devices(self):
         """Request data."""
@@ -177,26 +203,28 @@ class Mill:
         await asyncio.gather(*tasks)
 
     async def _update_home(self, home):
-        independent_devices_data = await self.request(
+        independent_devices_data = await self.request_cahced(
             f"/houses/{home.get('id')}/devices/independent"
         )
         tasks = []
         for device in independent_devices_data.get("items", []):
             tasks.append(self._update_device(device))
 
-        rooms_data = await self.request(f"houses/{home.get('id')}/devices")
+        rooms_data = await self.request_cahced(f"houses/{home.get('id')}/devices")
         if rooms_data is not None:
+            tasks.append(self._update_room(room))
             for room in rooms_data:
                 if not isinstance(room, dict):
                     _LOGGER.debug("Unexpected room data %s", room)
                     continue
                 tasks.append(self._update_room(room))
+
         await asyncio.gather(*tasks)
 
     async def _update_room(self, room):
-        room_data = await self.request(f"rooms/{room.get('roomId')}/devices")
-        if room_data is None:
+        if (room_id := room.get("roomId")) is None:
             return
+        room_data = await self.request_cahced(f"rooms/{room.get('roomId')}/devices")
 
         tasks = []
         for device in room.get("devices", []):
