@@ -165,6 +165,7 @@ class Mill:
             _LOGGER.debug("Invalid auth token, %s", result)
             if await self.connect():
                 return await self.request(url, payload, retry - 1, patch=patch)
+            _LOGGER.error("Invalid auth token, %s", result)
             return None
         if "error" in result:
             raise Exception(result)  # pylint: disable=broad-exception-raised
@@ -186,7 +187,8 @@ class Mill:
                 return res
         try:
             res = await self.request(url)
-            self._cached_data[url] = (res, dt.datetime.now())
+            if res is not None:
+                self._cached_data[url] = (res, dt.datetime.now())
         except TooManyRequests:
             if res is None:
                 raise
