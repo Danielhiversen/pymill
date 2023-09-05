@@ -18,7 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class TooManyRequests(Exception):
-    """Too many requests Exception."""
+    """Too many requests."""
 
 
 class Mill:
@@ -223,7 +223,7 @@ class Mill:
     async def _update_room(self, room):
         if (room_id := room.get("roomId")) is None:
             return
-        room_data = await self.request_cahced(f"rooms/{room.get('roomId')}/devices")
+        room_data = await self.request_cahced(f"rooms/{room_id}/devices")
 
         tasks = []
         for device in room.get("devices", []):
