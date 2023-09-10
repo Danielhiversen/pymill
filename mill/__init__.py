@@ -234,6 +234,9 @@ class Mill:
         await asyncio.gather(*tasks)
 
     async def _update_device(self, device_data, room_data=None):
+        if device_data is None:
+            _LOGGER.warning("No device data")
+            return
         device_type = (
             device_data.get("deviceType", {}).get("parentType", {}).get("name")
         )
