@@ -230,9 +230,9 @@ class Mill:
     async def _update_room(self, room):
         if (room_id := room.get("roomId")) is None:
             return
-        n = len(room.get("devices", []))
+        n_devices = len(room.get("devices", []))
         room_data = await self.cached_request(
-            f"rooms/{room_id}/devices", ttl=int(1 / (3900 / (24 * 60 * n))+1)
+            f"rooms/{room_id}/devices", ttl=int(1 / (3900 / (24 * 60 * n_devices))+1)
         )
 
         tasks = []
