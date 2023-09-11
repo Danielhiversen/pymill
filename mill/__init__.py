@@ -178,25 +178,29 @@ class Mill:
         _LOGGER.debug("Result %s", result)
         return json.loads(result)
 
-    async def request_cahced(self, url):
+    async def cached_request(self, url, payload=None, ttl=5):
         """Request data and cache."""
-        res = None
-        if url in self._cached_data:
-            res, timestamp = self._cached_data[url]
-            if dt.datetime.now() - timestamp < dt.timedelta(minutes=10):
-                return res
+        res, timestamp, _payload = self._cached_data.get(url, (None, None, None))
+        if (
+            url is not None
+            and _payload == payload
+            and timestamp is not None
+            and dt.datetime.now() - timestamp < dt.timedelta(minutes=ttl)
+        ):
+            return res
         try:
-            res = await self.request(url)
+            res = await self.request(url, payload)
             if res is not None:
-                self._cached_data[url] = (res, dt.datetime.now())
+                self._cached_data[url] = (res, dt.datetime.now(), payload)
         except TooManyRequests:
+            _LOGGER.info("Too many requests, using cache %s", url)
             if res is None:
                 raise
         return res
 
     async def update_devices(self):
         """Request data."""
-        resp = await self.request("houses")
+        resp = await self.cached_request("houses")
         if resp is None:
             return []
         homes = resp.get("ownHouses", [])
@@ -206,14 +210,15 @@ class Mill:
         await asyncio.gather(*tasks)
 
     async def _update_home(self, home):
-        independent_devices_data = await self.request_cahced(
-            f"/houses/{home.get('id')}/devices/independent"
+        independent_devices_data = await self.cached_request(
+            f"/houses/{home.get('id')}/devices/independent",
+            ttl=2,
         )
         tasks = []
         for device in independent_devices_data.get("items", []):
             tasks.append(self._update_device(device))
 
-        rooms_data = await self.request_cahced(f"houses/{home.get('id')}/devices")
+        rooms_data = await self.cached_request(f"houses/{home.get('id')}/devices")
         if rooms_data is not None:
             for room in rooms_data:
                 if not isinstance(room, dict):
@@ -226,7 +231,10 @@ class Mill:
     async def _update_room(self, room):
         if (room_id := room.get("roomId")) is None:
             return
-        room_data = await self.request_cahced(f"rooms/{room_id}/devices")
+        n_devices = len(room.get("devices", []))
+        room_data = await self.cached_request(
+            f"rooms/{room_id}/devices", ttl=int(1 / (3900 / (24 * 60 * n_devices)) + 1)
+        )
 
         tasks = []
         for device in room.get("devices", []):
@@ -247,7 +255,7 @@ class Mill:
                 and (now - self.devices[_id].last_fetched < dt.timedelta(seconds=15))
             ):
                 return
-            device_stats = await self.request(
+            device_stats = await self.cached_request(
                 f"devices/{_id}/statistics",
                 {
                     "period": "monthly",
@@ -255,6 +263,7 @@ class Mill:
                     "month": 1,
                     "day": 1,
                 },
+                ttl=2,
             )
             if device_stats is None:
                 return
