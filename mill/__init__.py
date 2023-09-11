@@ -211,7 +211,8 @@ class Mill:
 
     async def _update_home(self, home):
         independent_devices_data = await self.cached_request(
-            f"/houses/{home.get('id')}/devices/independent", ttl=2,
+            f"/houses/{home.get('id')}/devices/independent",
+            ttl=2,
         )
         tasks = []
         for device in independent_devices_data.get("items", []):
@@ -232,7 +233,7 @@ class Mill:
             return
         n_devices = len(room.get("devices", []))
         room_data = await self.cached_request(
-            f"rooms/{room_id}/devices", ttl=int(1 / (3900 / (24 * 60 * n_devices))+1)
+            f"rooms/{room_id}/devices", ttl=int(1 / (3900 / (24 * 60 * n_devices)) + 1)
         )
 
         tasks = []
