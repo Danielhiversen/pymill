@@ -399,12 +399,26 @@ class MillDevice:
         device_stats: dict | None = None,
     ) -> MillDevice:
         """Class method."""
+        device_type = device_data.get("deviceType")
+        if device_type is None:
+            model = None
+        else:
+            child_type = device_type.get("childType")
+            if child_type is None:
+                model = None
+            else:
+                model = child_type.get("name")
+        last_metrics = device_data.get("lastMetrics")
+        if last_metrics is None:
+            report_time = None
+        else:
+            report_time = last_metrics.get("time")
         return cls(
             name=device_data.get("customName"),
             device_id=device_data.get("deviceId"),
             available=device_data.get("isConnected"),
-            model=device_data.get("deviceType", {}).get("childType", {}).get("name"),
-            report_time=device_data.get("lastMetrics", {}).get("time"),
+            model=model,
+            report_time=report_time,
             data=device_data,
             room_data=room_data,
             stats=device_stats,
