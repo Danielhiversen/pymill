@@ -462,12 +462,16 @@ class Heater(MillDevice):
         """Post init."""
         if self.data:
             last_metrics = self.data.get("lastMetrics", {})
-            self.current_temp = last_metrics.get("temperatureAmbient")
+            if last_metrics is not None:
+                self.current_temp = last_metrics.get("temperatureAmbient")
+                self.is_heating = last_metrics.get("heaterFlag", 0) > 0
+                self.power_status = last_metrics.get("powerStatus", 0) > 0
+                self.set_temp = last_metrics.get("temperature")
+            else:
+                _LOGGER.warning("No last metrics for device %s", self.device_id)
+
             self.day_consumption = self.data.get("energyUsageForCurrentDay", 0) / 1000.0
-            self.is_heating = last_metrics.get("heaterFlag", 0) > 0
             self.open_window = WINDOW_STATES.get(last_metrics.get("openWindowsStatus"))
-            self.power_status = last_metrics.get("powerStatus", 0) > 0
-            self.set_temp = last_metrics.get("temperature")
         if self.stats:
             self.year_consumption = (
                 self.stats.get("deviceInfo", {}).get("totalPower", 0) / 1000.0
