@@ -158,11 +158,9 @@ class Mill:
             _LOGGER.error("Error sending command to Mill: %s", url, exc_info=True)
             return None
 
-        if resp.status == 429:
-            raise TooManyRequests(result)
-
         result = await resp.text()
-        if "Too Many Requests" in result:
+
+        if resp.status == 429 or "Too Many Requests" in result:
             raise TooManyRequests(result)
         if "InvalidAuthTokenError" in result:
             _LOGGER.debug("Invalid auth token, %s", result)
