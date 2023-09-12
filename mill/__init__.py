@@ -159,7 +159,8 @@ class Mill:
             return None
 
         result = await resp.text()
-        if "Too Many Requests" in result:
+
+        if resp.status == 429 or "Too Many Requests" in result:
             raise TooManyRequests(result)
         if "InvalidAuthTokenError" in result:
             _LOGGER.debug("Invalid auth token, %s", result)
@@ -169,23 +170,18 @@ class Mill:
             return None
         if "error" in result:
             raise Exception(result)  # pylint: disable=broad-exception-raised
-        if "InvalidAuthTokenError" in result:
-            _LOGGER.error("Invalid auth token, %s", result)
-            if await self.connect():
-                return await self.request(url, payload, retry - 1)
-            return None
 
         _LOGGER.debug("Result %s", result)
         return json.loads(result)
 
-    async def cached_request(self, url, payload=None, ttl=5):
+    async def cached_request(self, url, payload=None, ttl=20*60):
         """Request data and cache."""
         res, timestamp, _payload = self._cached_data.get(url, (None, None, None))
         if (
             url is not None
             and _payload == payload
             and timestamp is not None
-            and dt.datetime.now() - timestamp < dt.timedelta(minutes=ttl)
+            and dt.datetime.now() - timestamp < dt.timedelta(seconds=ttl)
         ):
             return res
         try:
@@ -193,7 +189,7 @@ class Mill:
             if res is not None:
                 self._cached_data[url] = (res, dt.datetime.now(), payload)
         except TooManyRequests:
-            _LOGGER.info("Too many requests, using cache %s", url)
+            _LOGGER.warning("Too many requests, using cache %s", url)
             if res is None:
                 raise
         return res
@@ -212,7 +208,7 @@ class Mill:
     async def _update_home(self, home):
         independent_devices_data = await self.cached_request(
             f"/houses/{home.get('id')}/devices/independent",
-            ttl=2,
+            ttl=60,
         )
         tasks = []
         for device in independent_devices_data.get("items", []):
@@ -231,9 +227,8 @@ class Mill:
     async def _update_room(self, room):
         if (room_id := room.get("roomId")) is None:
             return
-        n_devices = len(room.get("devices", []))
         room_data = await self.cached_request(
-            f"rooms/{room_id}/devices", ttl=int(1 / (3900 / (24 * 60 * n_devices)) + 1)
+            f"rooms/{room_id}/devices", ttl=120
         )
 
         tasks = []
@@ -266,7 +261,7 @@ class Mill:
                     "month": 1,
                     "day": 1,
                 },
-                ttl=2,
+                ttl=5*60,
             )
             if device_stats is None:
                 return
@@ -319,6 +314,7 @@ class Mill:
         if comfort_temp:
             payload["roomComfortTemperature"] = comfort_temp
 
+        self._cached_data = {}
         await self.request(f"rooms/{room_id}/temperature", payload, patch=True)
 
     async def fetch_heater_data(self):
@@ -348,6 +344,7 @@ class Mill:
             },
         }
         if await self.request(f"devices/{device_id}/settings", payload, patch=True):
+            self._cached_data = {}
             self.devices[device_id].power_status = power_status
             if not power_status:
                 self.devices[device_id].is_heating = False
@@ -369,6 +366,7 @@ class Mill:
             },
         }
         if await self.request(f"devices/{device_id}/settings", payload, patch=True):
+            self._cached_data = {}
             self.devices[device_id].set_temp = set_temp
             self.devices[device_id].is_heating = (
                 set_temp > self.devices[device_id].current_temp
