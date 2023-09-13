@@ -149,6 +149,16 @@ class Mill:
                         )
                 else:
                     resp = await self.websession.get(url, headers=self._headers)
+
+                if resp.status == 401:
+                    _LOGGER.debug("Invalid auth token")
+                    if await self.connect():
+                        return await self.request(url, payload, retry - 1, patch=patch)
+                    _LOGGER.error("Invalid auth token")
+                    return None
+                if resp.status == 429:
+                    raise TooManyRequests(await resp.text())
+                resp.raise_for_status()
         except asyncio.TimeoutError:
             if retry < 1:
                 _LOGGER.error("Timed out sending command to Mill: %s", url)
@@ -159,22 +169,10 @@ class Mill:
             return None
 
         result = await resp.text()
-
-        if resp.status == 429 or "Too Many Requests" in result:
-            raise TooManyRequests(result)
-        if "InvalidAuthTokenError" in result:
-            _LOGGER.debug("Invalid auth token, %s", result)
-            if await self.connect():
-                return await self.request(url, payload, retry - 1, patch=patch)
-            _LOGGER.error("Invalid auth token, %s", result)
-            return None
-        if "error" in result:
-            raise Exception(result)  # pylint: disable=broad-exception-raised
-
         _LOGGER.debug("Result %s", result)
         return json.loads(result)
 
-    async def cached_request(self, url, payload=None, ttl=20*60):
+    async def cached_request(self, url, payload=None, ttl=20 * 60):
         """Request data and cache."""
         res, timestamp, _payload = self._cached_data.get(url, (None, None, None))
         if (
@@ -211,8 +209,9 @@ class Mill:
             ttl=60,
         )
         tasks = []
-        for device in independent_devices_data.get("items", []):
-            tasks.append(self._update_device(device))
+        if independent_devices_data is not None:
+            for device in independent_devices_data.get("items", []):
+                tasks.append(self._update_device(device))
 
         rooms_data = await self.cached_request(f"houses/{home.get('id')}/devices")
         if rooms_data is not None:
@@ -227,9 +226,7 @@ class Mill:
     async def _update_room(self, room):
         if (room_id := room.get("roomId")) is None:
             return
-        room_data = await self.cached_request(
-            f"rooms/{room_id}/devices", ttl=120
-        )
+        room_data = await self.cached_request(f"rooms/{room_id}/devices", ttl=120)
 
         tasks = []
         for device in room.get("devices", []):
@@ -253,18 +250,7 @@ class Mill:
                 and (now - self.devices[_id].last_fetched < dt.timedelta(seconds=15))
             ):
                 return
-            device_stats = await self.cached_request(
-                f"devices/{_id}/statistics",
-                {
-                    "period": "monthly",
-                    "year": now.year,
-                    "month": 1,
-                    "day": 1,
-                },
-                ttl=5*60,
-            )
-            if device_stats is None:
-                return
+            device_stats = await self.fetch_stats(_id)
             if device_type == "Heaters":
                 self.devices[_id] = Heater.init_from_response(
                     device_data, room_data, device_stats
@@ -278,6 +264,21 @@ class Mill:
         else:
             _LOGGER.error("Unsupported device, %s %s", device_type, device_data)
             return
+
+    async def fetch_stats(self, device_id, ttl=12 * 60 * 60):
+        """Fetch stats."""
+        now = dt.datetime.now()
+        device_stats = await self.cached_request(
+            f"devices/{device_id}/statistics",
+            {
+                "period": "monthly",
+                "year": now.year,
+                "month": 1,
+                "day": 1,
+            },
+            ttl=ttl,
+        )
+        return device_stats
 
     async def set_room_temperatures_by_name(
         self, room_name, sleep_temp=None, comfort_temp=None, away_temp=None
