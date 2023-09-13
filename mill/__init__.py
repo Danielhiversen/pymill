@@ -172,7 +172,7 @@ class Mill:
         _LOGGER.debug("Result %s", result)
         return json.loads(result)
 
-    async def cached_request(self, url, payload=None, ttl=20*60):
+    async def cached_request(self, url, payload=None, ttl=20 * 60):
         """Request data and cache."""
         res, timestamp, _payload = self._cached_data.get(url, (None, None, None))
         if (
@@ -226,9 +226,7 @@ class Mill:
     async def _update_room(self, room):
         if (room_id := room.get("roomId")) is None:
             return
-        room_data = await self.cached_request(
-            f"rooms/{room_id}/devices", ttl=120
-        )
+        room_data = await self.cached_request(f"rooms/{room_id}/devices", ttl=120)
 
         tasks = []
         for device in room.get("devices", []):
@@ -267,7 +265,8 @@ class Mill:
             _LOGGER.error("Unsupported device, %s %s", device_type, device_data)
             return
 
-    async def fetch_stats(self, device_id):
+    async def fetch_stats(self, device_id, ttl=12 * 60 * 60):
+        """Fetch stats."""
         now = dt.datetime.now()
         device_stats = await self.cached_request(
             f"devices/{device_id}/statistics",
@@ -277,7 +276,7 @@ class Mill:
                 "month": 1,
                 "day": 1,
             },
-            ttl=12 * 60 * 60,
+            ttl=ttl,
         )
         return device_stats
 
