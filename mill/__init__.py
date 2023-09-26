@@ -153,7 +153,7 @@ class Mill:
                 if resp.status == 401:
                     _LOGGER.debug("Invalid auth token")
                     if await self.connect():
-                        return await self.request(url, payload, retry - 1, patch=patch)
+                        return await self.request(command, payload, retry - 1, patch=patch)
                     _LOGGER.error("Invalid auth token")
                     return None
                 if resp.status == 429:
@@ -163,7 +163,7 @@ class Mill:
             if retry < 1:
                 _LOGGER.error("Timed out sending command to Mill: %s", url)
                 return None
-            return await self.request(url, payload, retry - 1, patch=patch)
+            return await self.request(command, payload, retry - 1, patch=patch)
         except aiohttp.ClientError:
             _LOGGER.error("Error sending command to Mill: %s", url, exc_info=True)
             return None
