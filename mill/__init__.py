@@ -111,7 +111,7 @@ class Mill:
             _LOGGER.error("No token")
             return None
 
-        _LOGGER.debug("Request %s %s", command, payload)
+        _LOGGER.debug("Request %s %s", command, payload or "")
         url = API_ENDPOINT + command
 
         try:
@@ -257,6 +257,14 @@ class Mill:
         """Fetch yearly stats."""
 
         now = dt.datetime.now()
+
+        cache = self._cached_stats_data.get(device_id)
+        if cache:
+            if (now - cache[1] > dt.timedelta(days=10)) or (
+                now.day == 1 and now.hour < 2 and now - cache[1] > dt.timedelta(hours=2)
+            ):
+                self._cached_stats_data.pop(device_id)
+
         if device_id not in self._cached_stats_data:
             _energy_prev_month = 0
             for month in range(1, now.month):
@@ -272,9 +280,9 @@ class Mill:
                         .get("items", [])
                     ]
                 )
-            self._cached_stats_data[device_id] = _energy_prev_month
+            self._cached_stats_data[device_id] = _energy_prev_month, now
         else:
-            _energy_prev_month = self._cached_stats_data[device_id]
+            _energy_prev_month = cache[0]
 
         stats = await self.fetch_stats(
             device_id,
