@@ -258,19 +258,20 @@ class Mill:
 
         now = dt.datetime.now()
         if device_id not in self._cached_stats_data:
-            _energy_prev_month = sum(
-                [
-                    item.get("value", 0)
-                    for item in (
-                        await self.fetch_stats(
-                            device_id, now.year, now.month, 1, "daily", ttl=0
+            _energy_prev_month = 0
+            for month in range(1, now.month):
+                _energy_prev_month += sum(
+                    [
+                        item.get("value", 0)
+                        for item in (
+                            await self.fetch_stats(
+                                device_id, now.year, month, 1, "daily", ttl=0
+                            )
                         )
-                    )
-                    .get("energyUsage", {})
-                    .get("items", [])
-                    for month in range(1, now.month)
-                ]
-            )
+                        .get("energyUsage", {})
+                        .get("items", [])
+                    ]
+                )
             self._cached_stats_data[device_id] = _energy_prev_month
         else:
             _energy_prev_month = self._cached_stats_data[device_id]
@@ -297,6 +298,7 @@ class Mill:
 
         return {"yearly_consumption": (_energy_this_month + _energy_prev_month)}
 
+    # pylint: disable=too-many-arguments
     async def fetch_stats(self, device_id, year, month, day, period, ttl=60 * 60):
         """Fetch stats."""
         device_stats = await self.cached_request(
