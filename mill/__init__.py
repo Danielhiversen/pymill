@@ -269,16 +269,14 @@ class Mill:
             _energy_prev_month = 0
             for month in range(1, now.month):
                 _energy_prev_month += sum(
-                    [
-                        item.get("value", 0)
-                        for item in (
-                            await self.fetch_stats(
-                                device_id, now.year, month, 1, "daily", ttl=0
-                            )
+                    item.get("value", 0)
+                    for item in (
+                        await self.fetch_stats(
+                            device_id, now.year, month, 1, "daily", ttl=0
                         )
-                        .get("energyUsage", {})
-                        .get("items", [])
-                    ]
+                    )
+                    .get("energyUsage", {})
+                    .get("items", [])
                 )
             self._cached_stats_data[device_id] = _energy_prev_month, now
         else:
