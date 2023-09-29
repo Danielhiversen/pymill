@@ -50,8 +50,8 @@ class Mill:
         self._password = password
         self._user_id = None
         self._token = None
-        self._migrated = False
         self._cached_data = {}
+        self._cached_stats_data = {}
 
     async def connect(self, retry=2):
         """Connect to Mill."""
@@ -68,29 +68,11 @@ class Mill:
                 _LOGGER.error("Error connecting to Mill", exc_info=True)
                 return False
             return await self.connect(retry - 1)
-
         result = await resp.text()
 
         if "Incorrect login or password" in result:
-            if retry < 1 or self._migrated:
-                _LOGGER.error("Incorrect login or password, %s", result)
-                return False
-            payload = {
-                "login": {
-                    "type": "email",
-                    "value": self._username,
-                },
-                "password": self._password,
-            }
-            self._migrated = True
-            async with async_timeout.timeout(self._timeout):
-                resp = await self.websession.post(
-                    API_ENDPOINT + "cloud-migration/migrate-customer",
-                    json=payload,
-                )
-                _LOGGER.debug("Migrate customer %s", await resp.text())
-            await asyncio.sleep(10)
-            return await self.connect(retry - 1)
+            _LOGGER.error("Incorrect login or password, %s", result)
+            return False
         data = json.loads(result)
         if (token := data.get("idToken")) is None:
             _LOGGER.error("No token")
@@ -129,7 +111,7 @@ class Mill:
             _LOGGER.error("No token")
             return None
 
-        _LOGGER.debug("Request %s %s", command, payload)
+        _LOGGER.debug("Request %s %s", command, payload or "")
         url = API_ENDPOINT + command
 
         try:
@@ -153,7 +135,9 @@ class Mill:
                 if resp.status == 401:
                     _LOGGER.debug("Invalid auth token")
                     if await self.connect():
-                        return await self.request(command, payload, retry - 1, patch=patch)
+                        return await self.request(
+                            command, payload, retry - 1, patch=patch
+                        )
                     _LOGGER.error("Invalid auth token")
                     return None
                 if resp.status == 429:
@@ -174,7 +158,9 @@ class Mill:
 
     async def cached_request(self, url, payload=None, ttl=20 * 60):
         """Request data and cache."""
-        res, timestamp, _payload = self._cached_data.get(url, (None, None, None))
+        res, timestamp, _payload = self._cached_data.get(
+            url + str(payload), (None, None, None)
+        )
         if (
             url is not None
             and _payload == payload
@@ -184,8 +170,12 @@ class Mill:
             return res
         try:
             res = await self.request(url, payload)
-            if res is not None:
-                self._cached_data[url] = (res, dt.datetime.now(), payload)
+            if res is not None and ttl > 0:
+                self._cached_data[url + str(payload)] = (
+                    res,
+                    dt.datetime.now(),
+                    payload,
+                )
         except TooManyRequests:
             _LOGGER.warning("Too many requests, using cache %s", url)
             if res is None:
@@ -226,7 +216,7 @@ class Mill:
     async def _update_room(self, room):
         if (room_id := room.get("roomId")) is None:
             return
-        room_data = await self.cached_request(f"rooms/{room_id}/devices", ttl=120)
+        room_data = await self.cached_request(f"rooms/{room_id}/devices", ttl=90)
 
         tasks = []
         for device in room.get("devices", []):
@@ -244,13 +234,11 @@ class Mill:
 
         if device_type in ("Heaters", "Sockets"):
             now = dt.datetime.now()
-            if (
-                _id in self.devices
-                and self.devices[_id].last_fetched
-                and (now - self.devices[_id].last_fetched < dt.timedelta(seconds=15))
+            if _id in self.devices and (
+                now - self.devices[_id].last_fetched < dt.timedelta(seconds=15)
             ):
                 return
-            device_stats = await self.fetch_stats(_id)
+            device_stats = await self.fetch_yearly_stats(_id)
             if device_type == "Heaters":
                 self.devices[_id] = Heater.init_from_response(
                     device_data, room_data, device_stats
@@ -265,19 +253,72 @@ class Mill:
             _LOGGER.error("Unsupported device, %s %s", device_type, device_data)
             return
 
-    async def fetch_stats(self, device_id, ttl=12 * 60 * 60):
-        """Fetch stats."""
+    async def fetch_yearly_stats(self, device_id, ttl=30 * 60):
+        """Fetch yearly stats."""
+
         now = dt.datetime.now()
+
+        cache = self._cached_stats_data.get(device_id)
+        if cache:
+            if (now - cache[1] > dt.timedelta(days=10)) or (
+                now.day == 1 and now.hour < 2 and now - cache[1] > dt.timedelta(hours=2)
+            ):
+                self._cached_stats_data.pop(device_id)
+
+        if device_id not in self._cached_stats_data:
+            _energy_prev_month = 0
+            for month in range(1, now.month):
+                _energy_prev_month += sum(
+                    item.get("value", 0)
+                    for item in (
+                        await self.fetch_stats(
+                            device_id, now.year, month, 1, "daily", ttl=0
+                        )
+                    )
+                    .get("energyUsage", {})
+                    .get("items", [])
+                )
+            self._cached_stats_data[device_id] = _energy_prev_month, now
+        else:
+            _energy_prev_month = cache[0]
+
+        stats = await self.fetch_stats(
+            device_id,
+            now.year,
+            now.month,
+            1,
+            "daily",
+            ttl=12 * 60 * 60,
+        )
+        _energy_this_month = 0
+        for item in stats.get("energyUsage", {}).get("items", []) or []:
+            if item["lostStatisticData"]:
+                _date = dt.datetime.fromisoformat(item["endPeriod"])
+                hourly_stats = await self.fetch_stats(
+                    device_id, _date.year, _date.month, _date.day, "hourly", ttl=ttl
+                )
+                for _item in hourly_stats.get("energyUsage", {}).get("items", []):
+                    _energy_this_month += _item.get("value", 0)
+                continue
+            _energy_this_month += item.get("value", 0)
+
+        return {"yearly_consumption": (_energy_this_month + _energy_prev_month)}
+
+    # pylint: disable=too-many-arguments
+    async def fetch_stats(self, device_id, year, month, day, period, ttl=60 * 60):
+        """Fetch stats."""
         device_stats = await self.cached_request(
             f"devices/{device_id}/statistics",
             {
-                "period": "monthly",
-                "year": now.year,
-                "month": 1,
-                "day": 1,
+                "period": period,
+                "year": year,
+                "month": month,
+                "day": day,
             },
             ttl=ttl,
         )
+        if device_stats is None:
+            return {}
         return device_stats
 
     async def set_room_temperatures_by_name(
@@ -449,7 +490,7 @@ class Heater(MillDevice):
     home_id: str | None = None
     independent_device: bool | None = None
     is_heating: bool | None = None
-    last_fetched: dt.datetime | None = None
+    last_fetched: dt.datetime = dt.datetime.fromtimestamp(0)
     open_window: str | None = None
     power_status: bool | None = None
     room_avg_temp: float | None = None
@@ -468,15 +509,15 @@ class Heater(MillDevice):
                 self.is_heating = last_metrics.get("heaterFlag", 0) > 0
                 self.power_status = last_metrics.get("powerStatus", 0) > 0
                 self.set_temp = last_metrics.get("temperature")
-                self.open_window = WINDOW_STATES.get(last_metrics.get("openWindowsStatus"))
+                self.open_window = WINDOW_STATES.get(
+                    last_metrics.get("openWindowsStatus")
+                )
             else:
                 _LOGGER.warning("No last metrics for device %s", self.device_id)
-
             self.day_consumption = self.data.get("energyUsageForCurrentDay", 0) / 1000.0
+
         if self.stats:
-            self.year_consumption = (
-                self.stats.get("deviceInfo", {}).get("totalPower", 0) / 1000.0
-            )
+            self.year_consumption = self.stats.get("yearly_consumption", 0) / 1000.0
         if self.room_data:
             self.tibber_control = (
                 self.room_data.get("controlSource", {}).get("tibber") == 1
