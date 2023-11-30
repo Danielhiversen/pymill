@@ -326,8 +326,11 @@ class Mill:
     ):
         """Set room temps by name."""
         if sleep_temp is None and comfort_temp is None and away_temp is None:
+            _LOGGER.error("Missing input data %s", room_name)
             return
         for heater in self.devices.values():
+            if not isinstance(heater, Heater):
+                continue
             if heater.room_name.lower().strip() == room_name.lower().strip():
                 await self.set_room_temperatures(
                     heater.room_id,
@@ -357,7 +360,7 @@ class Mill:
             payload["roomComfortTemperature"] = comfort_temp
 
         self._cached_data = {}
-        await self.request(f"rooms/{room_id}/temperature", payload, patch=True)
+        await self.request(f"rooms/{room_id}/temperature", payload)
 
     async def fetch_heater_data(self):
         """Request data."""
