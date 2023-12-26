@@ -507,11 +507,12 @@ class Heater(MillDevice):
         """Post init."""
         if self.data:
             last_metrics = self.data.get("lastMetrics", {})
+            device_settings_desired = self.data.get("deviceSettings", {}).get("desired", {})
             if last_metrics is not None:
                 self.current_temp = last_metrics.get("temperatureAmbient")
                 self.is_heating = last_metrics.get("heaterFlag", 0) > 0
                 self.power_status = last_metrics.get("powerStatus", 0) > 0
-                self.set_temp = last_metrics.get("temperature")
+                self.set_temp = device_settings_desired.get("temperature_normal", last_metrics.get("temperature"))
                 self.open_window = WINDOW_STATES.get(
                     last_metrics.get("openWindowsStatus")
                 )
