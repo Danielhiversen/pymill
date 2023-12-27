@@ -1,4 +1,4 @@
-# pymill [![Build Status](https://travis-ci.org/Danielhiversen/pymill.svg?branch=master)](https://travis-ci.org/Danielhiversen/pymill)
+# pymill 
 
 Python3 library for Mill heater.
 
