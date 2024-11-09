@@ -309,11 +309,9 @@ class Mill:
         """Fetch historic energy usage."""
         now = dt.datetime.now()
         res = {}
-        print(n_days)
         n_days = max(n_days, 1)
         for day in range(n_days):
             date = now - dt.timedelta(days=-n_days + day + 1)
-            print(date, n_days, day)
             hourly_stats = await self.fetch_stats(
                 device_id, date.year, date.month, date.day, "hourly"
             )
