@@ -177,9 +177,9 @@ class Mill:
                     payload,
                 )
         except TooManyRequests:
-            _LOGGER.warning("Too many requests, using cache %s", url)
             if res is None:
                 raise
+            _LOGGER.warning("Too many requests, using cache %s", url)
         return res
 
     async def update_devices(self):
@@ -303,6 +303,23 @@ class Mill:
             _energy_this_month += item.get("value", 0)
 
         return {"yearly_consumption": (_energy_this_month + _energy_prev_month)}
+    
+
+    async def fetch_historic_energy_usage(self, device_id, n_days=4):
+        """Fetch historic energy usage."""
+        now = dt.datetime.now()
+        res = {}
+        print(n_days)
+        n_days = max(n_days, 1)
+        for day in range(n_days):
+            date = now - dt.timedelta(days=-n_days + day + 1)
+            print(date, n_days, day)
+            hourly_stats = await self.fetch_stats(
+                device_id, date.year, date.month, date.day, "hourly"
+            )
+            for item in hourly_stats.get("energyUsage", {}).get("items", []):
+                res[dt.datetime.fromisoformat(item["startPeriod"]).astimezone(dt.timezone.utc)] = item.get("value", 0) / 1000.0
+        return res
 
     # pylint: disable=too-many-arguments
     async def fetch_stats(self, device_id, year, month, day, period, ttl=60 * 60):
@@ -400,6 +417,19 @@ class Mill:
                 )
             self.devices[device_id].last_fetched = dt.datetime.now()
 
+    async def max_heating_power(self, device_id: str, heating_power: float):
+        """Max heating power."""
+        payload = {
+            "deviceType": self.devices[device_id].device_type,
+            "enabled": True,
+            "settings": {
+                "operation_mode": "control_individually",
+                "max_heater_power": heating_power,
+            },
+        }
+        await self.request(f"devices/{device_id}/settings", payload, patch=True)
+
+
     async def set_heater_temp(self, device_id, set_temp):
         """Set heater temp."""
         payload = {
@@ -488,7 +518,9 @@ class Heater(MillDevice):
 
     # pylint: disable=too-many-instance-attributes
 
+    control_signal: float | None = None 
     current_temp: float | None = None
+    current_power: float | None = None
     day_consumption: float | None = None
     home_id: str | None = None
     independent_device: bool | None = None
@@ -501,6 +533,7 @@ class Heater(MillDevice):
     room_name: str | None = None
     set_temp: float | None = None
     tibber_control: bool | None = None
+    total_consumption: float | None = None
     year_consumption: float | None = None
 
     def __post_init__(self) -> None:
@@ -520,6 +553,9 @@ class Heater(MillDevice):
                 self.open_window = WINDOW_STATES.get(
                     last_metrics.get("openWindowsStatus")
                 )
+                self.control_signal = last_metrics.get("controlSignal")
+                self.current_power = last_metrics.get("currentPower")
+                self.total_consumption = last_metrics.get("energyUsage")
             else:
                 _LOGGER.warning("No last metrics for device %s", self.device_id)
             self.day_consumption = self.data.get("energyUsageForCurrentDay", 0) / 1000.0
@@ -547,6 +583,14 @@ class Heater(MillDevice):
 @dataclass()
 class Socket(Heater):
     """Representation of socket."""
+    humidity: float | None = None
+
+    def __post_init__(self) -> None:
+        """Post init."""
+        if self.data:
+            last_metrics = self.data.get("lastMetrics", {})
+            self.humidity = last_metrics.get("humidity")
+        super().__post_init__()
 
     @property
     def device_type(self) -> str:
