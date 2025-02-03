@@ -344,7 +344,7 @@ class Mill:
             _LOGGER.error("Missing input data %s", room_name)
             return
         for heater in self.devices.values():
-            if not isinstance(heater, Heater):
+            if not isinstance(heater, Heater) or heater.room_name is None:
                 continue
             if heater.room_name.lower().strip() == room_name.lower().strip():
                 await self.set_room_temperatures(
