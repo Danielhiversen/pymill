@@ -322,16 +322,19 @@ class Mill:
     # pylint: disable=too-many-arguments
     async def fetch_stats(self, device_id, year, month, day, period, ttl=60 * 60):
         """Fetch stats."""
-        device_stats = await self.cached_request(
-            f"devices/{device_id}/statistics",
-            {
-                "period": period,
-                "year": year,
-                "month": month,
-                "day": day,
-            },
-            ttl=ttl,
-        )
+        try:
+            device_stats = await self.cached_request(
+                f"devices/{device_id}/statistics",
+                {
+                    "period": period,
+                    "year": year,
+                    "month": month,
+                    "day": day,
+                },
+                ttl=ttl,
+            )
+        except TooManyRequests:
+            return {}
         if device_stats is None:
             return {}
         return device_stats
