@@ -142,6 +142,7 @@ class Mill:
                     return None
                 if resp.status == 429:
                     raise TooManyRequests(await resp.text())
+                _LOGGER.debug("Status %s", resp.status)
                 resp.raise_for_status()
         except asyncio.TimeoutError:
             if retry < 1:
@@ -310,11 +311,18 @@ class Mill:
         now = dt.datetime.now()
         res = {}
         n_days = max(n_days, 1)
-        for day in range(n_days):
-            date = now - dt.timedelta(days=n_days - day - 1)
-            hourly_stats = await self.fetch_stats(
-                device_id, date.year, date.month, date.day, "hourly"
-            )
+        for day in range(n_days + 1):
+            date = now - dt.timedelta(days=n_days - day)
+            try:
+                hourly_stats = await self.fetch_stats(
+                    device_id, date.year, date.month, date.day, "hourly"
+                )
+            except aiohttp.ClientResponseError:
+                _LOGGER.warning(
+                    "Error when fetching stats for device_id=%s, year=%s, month=%s, day=%s, period=%s",
+                    device_id, year, month, day, period
+                )
+                break
             for item in hourly_stats.get("energyUsage", {}).get("items", []):
                 res[dt.datetime.fromisoformat(item["startPeriod"]).astimezone(dt.timezone.utc)] = item.get("value", 0) / 1000.0
         return res
