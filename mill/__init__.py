@@ -334,6 +334,10 @@ class Mill:
                 ttl=ttl,
             )
         except TooManyRequests:
+            _LOGGER.warning(
+                "Too many requests when fetching stats for device_id=%s, year=%s, month=%s, day=%s, period=%s",
+                device_id, year, month, day, period
+            )
             return {}
         if device_stats is None:
             return {}
