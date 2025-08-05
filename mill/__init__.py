@@ -148,6 +148,7 @@ class Mill:
             if retry < 1:
                 _LOGGER.error("Timed out sending command to Mill: %s", url)
                 return None
+            await asyncio.sleep(max(0.5, 3**(3-retry)- 0.5))
             return await self.request(command, payload, retry - 1, patch=patch)
         except aiohttp.ClientError:
             _LOGGER.error("Error sending command to Mill: %s", url, exc_info=True)
