@@ -504,7 +504,7 @@ class Mill:
         if token := data.get("idToken"):
             self._token = token
             self._token_expires = self._get_token_expiration(token)
-            _LOGGER.error("Token expires at %s", self._token_expires)
+            _LOGGER.debug("Token expires at %s", self._token_expires)
         else:
             _LOGGER.error("No token")
             return False
