@@ -108,9 +108,9 @@ class Mill:
 
     async def refresh_token(self):
         """Refresh the token."""
-        _LOGGER.error("Refreshing token")
+        _LOGGER.info("Refreshing token")
         async with LOCK:
-            if dt.datetime.now() >= self._token_expires:
+            if dt.datetime.now() < self._token_expires:
                 return True
             headers = {"Authorization": f"Bearer {self._refresh_token}"}
             try:
