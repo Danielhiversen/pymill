@@ -8,7 +8,6 @@ import json
 import logging
 
 import aiohttp
-import async_timeout
 import jwt
 
 API_ENDPOINT = "https://api.millnorwaycloud.com/"
@@ -62,7 +61,7 @@ class Mill:
         # pylint: disable=too-many-return-statements
         payload = {"login": self._username, "password": self._password}
         try:
-            async with async_timeout.timeout(self._timeout):
+            async with asyncio.timeout(self._timeout):
                 resp = await self.websession.post(
                     API_ENDPOINT + "customer/auth/sign-in",
                     json=payload,
@@ -83,7 +82,7 @@ class Mill:
 
         if self._user_id is not None:
             return True
-        async with async_timeout.timeout(self._timeout):
+        async with asyncio.timeout(self._timeout):
             resp = await self.websession.get(
                 API_ENDPOINT + "customer/details",
                 headers=self._headers,
@@ -114,7 +113,7 @@ class Mill:
                 return True
             headers = {"Authorization": f"Bearer {self._refresh_token}"}
             try:
-                async with async_timeout.timeout(self._timeout):
+                async with asyncio.timeout(self._timeout):
                     response = await self.websession.post(
                         API_ENDPOINT + "/customer/auth/refresh",
                         headers=headers,
@@ -152,7 +151,7 @@ class Mill:
         url = API_ENDPOINT + command
 
         try:
-            async with async_timeout.timeout(self._timeout):
+            async with asyncio.timeout(self._timeout):
                 if payload:
                     if patch:
                         resp = await self.websession.patch(
@@ -358,7 +357,7 @@ class Mill:
             except aiohttp.ClientResponseError:
                 _LOGGER.warning(
                     "Error when fetching stats for device_id=%s, year=%s, month=%s, day=%s, period=%s",
-                    device_id, year, month, day, period
+                    device_id, date.year, date.month, date.day, "hourly"
                 )
                 break
             for item in hourly_stats.get("energyUsage", {}).get("items", []):
