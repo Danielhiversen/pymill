@@ -9,12 +9,14 @@ import logging
 
 import aiohttp
 import async_timeout
+import jwt
 
 API_ENDPOINT = "https://api.millnorwaycloud.com/"
 DEFAULT_TIMEOUT = 10
 WINDOW_STATES = {0: "disabled", 3: "enabled_not_active", 2: "enabled_active"}
 
 _LOGGER = logging.getLogger(__name__)
+LOCK = asyncio.Lock()
 
 
 class TooManyRequests(Exception):
@@ -50,6 +52,8 @@ class Mill:
         self._password = password
         self._user_id = None
         self._token = None
+        self._token_expires = None
+        self._refresh_token = None
         self._cached_data = {}
         self._cached_stats_data = {}
 
@@ -74,10 +78,8 @@ class Mill:
             _LOGGER.error("Incorrect login or password, %s", result)
             return False
         data = json.loads(result)
-        if (token := data.get("idToken")) is None:
-            _LOGGER.error("No token")
+        if not self._update_tokens(data):
             return False
-        self._token = token
 
         if self._user_id is not None:
             return True
@@ -104,14 +106,49 @@ class Mill:
         """Close the Mill connection."""
         await self.websession.close()
 
+    async def refresh_token(self):
+        """Refresh the token."""
+        _LOGGER.info("Refreshing token")
+        async with LOCK:
+            if dt.datetime.now() < self._token_expires:
+                return True
+            headers = {"Authorization": f"Bearer {self._refresh_token}"}
+            try:
+                async with async_timeout.timeout(self._timeout):
+                    response = await self.websession.post(
+                        API_ENDPOINT + "/customer/auth/refresh",
+                        headers=headers,
+                    )
+            except (asyncio.TimeoutError, aiohttp.ClientError):
+                _LOGGER.error("Failed to refresh token", exc_info=True)
+                return False
+            if response.status == 401:
+                return await self.connect()
+
+            data = await response.json()
+
+            if not self._update_tokens(data) and not await self.connect():
+                _LOGGER.error("Failed to refresh token")
+                return False
+            
+        return True
+
     async def request(self, command, payload=None, retry=3, patch=False):
         """Request data."""
         # pylint: disable=too-many-return-statements, too-many-branches
-        if self._token is None:
+        if self._token is None or self._token_expires is None:
             _LOGGER.error("No token")
             return None
 
         _LOGGER.debug("Request %s %s", command, payload or "")
+
+        if dt.datetime.now() >= self._token_expires:
+            _LOGGER.debug("Token expired, refreshing")
+            if not await self.refresh_token():
+                _LOGGER.error("Failed to refresh token")
+                return None
+            _LOGGER.debug("Token refreshed")
+
         url = API_ENDPOINT + command
 
         try:
@@ -134,7 +171,7 @@ class Mill:
 
                 if resp.status == 401:
                     _LOGGER.debug("Invalid auth token")
-                    if await self.connect():
+                    if await self.refresh_token():
                         return await self.request(
                             command, payload, retry - 1, patch=patch
                         )
@@ -148,7 +185,7 @@ class Mill:
             if retry < 1:
                 _LOGGER.error("Timed out sending command to Mill: %s", url)
                 return None
-            await asyncio.sleep(max(0.5, 3**(3-retry)- 0.5))
+            await asyncio.sleep(max(0.5, 2**(3-retry)- 0.5))
             return await self.request(command, payload, retry - 1, patch=patch)
         except aiohttp.ClientError:
             _LOGGER.error("Error sending command to Mill: %s", url, exc_info=True)
@@ -461,6 +498,35 @@ class Mill:
                 set_temp > self.devices[device_id].current_temp
             )
             self.devices[device_id].last_fetched = dt.datetime.now()
+
+    def _update_tokens(self, data):
+        """Update access and refresh tokens from API response data."""
+        if token := data.get("idToken"):
+            self._token = token
+            self._token_expires = self._get_token_expiration(token)
+            _LOGGER.debug("Token expires at %s", self._token_expires)
+        else:
+            _LOGGER.error("No token")
+            return False
+        
+        if refresh_token := data.get("refreshToken"):
+            self._refresh_token = refresh_token
+        else:
+            _LOGGER.error("No refresh token")
+            return False
+
+        return True
+
+    def _get_token_expiration(self, token):
+        """Extract expiration time from JWT token."""
+        try:
+            payload = jwt.decode(token, options={"verify_signature": False})
+            exp_timestamp = payload.get('exp')
+            if exp_timestamp:
+                return dt.datetime.fromtimestamp(exp_timestamp)
+        except Exception as e:
+            _LOGGER.warning("Could not decode token expiration, using default: %s", e)
+        return dt.datetime.now() + dt.timedelta(minutes=10)
 
 
 @dataclass(kw_only=True)
