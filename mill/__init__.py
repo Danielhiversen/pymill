@@ -129,7 +129,7 @@ class Mill:
             if not self._update_tokens(data) and not await self.connect():
                 _LOGGER.error("Failed to refresh token")
                 return False
-            
+
         return True
 
     async def request(self, command, payload=None, retry=3, patch=False):
@@ -184,7 +184,7 @@ class Mill:
             if retry < 1:
                 _LOGGER.error("Timed out sending command to Mill: %s", url)
                 return None
-            await asyncio.sleep(max(0.5, 2**(3-retry)- 0.5))
+            await asyncio.sleep(max(0.5, 2**(3-retry) - 0.5))
             return await self.request(command, payload, retry - 1, patch=patch)
         except aiohttp.ClientError:
             _LOGGER.error("Error sending command to Mill: %s", url, exc_info=True)
@@ -341,7 +341,6 @@ class Mill:
             _energy_this_month += item.get("value", 0)
 
         return {"yearly_consumption": (_energy_this_month + _energy_prev_month)}
-    
 
     async def fetch_historic_energy_usage(self, device_id, n_days=4):
         """Fetch historic energy usage."""
@@ -361,7 +360,11 @@ class Mill:
                 )
                 break
             for item in hourly_stats.get("energyUsage", {}).get("items", []):
-                res[dt.datetime.fromisoformat(item["startPeriod"]).astimezone(dt.timezone.utc)] = item.get("value", 0) / 1000.0
+                res[
+                    dt.datetime.fromisoformat(item["startPeriod"]).astimezone(
+                        dt.timezone.utc
+                    )
+                ] = item.get("value", 0) / 1000.0
         return res
 
     # pylint: disable=too-many-arguments
@@ -479,7 +482,6 @@ class Mill:
         }
         await self.request(f"devices/{device_id}/settings", payload, patch=True)
 
-
     async def set_heater_temp(self, device_id, set_temp):
         """Set heater temp."""
         payload = {
@@ -507,7 +509,7 @@ class Mill:
         else:
             _LOGGER.error("No token")
             return False
-        
+
         if refresh_token := data.get("refreshToken"):
             self._refresh_token = refresh_token
         else:
@@ -597,7 +599,7 @@ class Heater(MillDevice):
 
     # pylint: disable=too-many-instance-attributes
 
-    control_signal: float | None = None 
+    control_signal: float | None = None
     current_temp: float | None = None
     current_power: float | None = None
     day_consumption: float | None = None
