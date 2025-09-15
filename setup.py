@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name="millheater",
     packages=["mill"],
-    install_requires=["aiohttp>=3.7.4,<4", "async_timeout>=3.0.0"],
+    install_requires=["aiohttp>=3.7.4,<4", "PyJWT>=2"],
     version="0.13.1",
     description="A python3 library to communicate with Mill",
     long_description="A python3 library to communicate with Mill",
