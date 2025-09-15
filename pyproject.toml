@@ -1,0 +1,6 @@
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+ignore = ["D", "EM", "FBT", "PLR0913", "S101", "S105", "TRY", "COM812"]
+select = ["ALL"]
