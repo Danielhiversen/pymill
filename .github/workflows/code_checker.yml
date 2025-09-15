@@ -27,4 +27,4 @@ jobs:
             pip install ruff>=0.1.0
       - name: Run ruff check and format
         run: |
-            ruff check mill/ --line-length=120 && ruff format --check mill/
+            ruff check mill/ && ruff format --check mill/
