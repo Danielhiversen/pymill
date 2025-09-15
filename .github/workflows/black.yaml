@@ -10,16 +10,22 @@ jobs:
   validate:
     runs-on: "ubuntu-latest"
     steps:
-      - uses: actions/checkout@v3
-      - name: black
+      - uses: actions/checkout@v4
+      - name: Set up Python
         if: github.event.pull_request.head.repo.full_name == github.repository
-        uses: lgeiger/black-action@master
+        uses: actions/setup-python@v5
         with:
-            args: .
+          python-version: '3.10'
+      - name: Install black
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        run: pip install black
+      - name: Run black
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        run: black --check --diff .
       - name: Check for modified files
         if: github.event.pull_request.head.repo.full_name == github.repository
         id: git-check
-        run: echo ::set-output name=modified::$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)
+        run: echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
       - name: Push changes
         if: github.event.pull_request.head.repo.full_name == github.repository && steps.git-check.outputs.modified == 'true'
         run: |
@@ -29,7 +35,9 @@ jobs:
             git checkout $GITHUB_HEAD_REF
             git commit -am "fixup! Format Python code with black"
             git push
+      - name: Install flake8
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        run: pip install flake8
       - name: Flake8 Code Linter
-        uses: jonasrk/flake8-action@master
-        with: 
-          args: "--max-line-length=120 "
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        run: flake8 . --max-line-length=120
