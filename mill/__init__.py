@@ -65,7 +65,7 @@ class Mill:
         self._cached_data = {}
         self._cached_stats_data = {}
 
-    async def connect(self, retry: int = 2) -> bool:
+    async def connect(self, retry: int = 2) -> bool:  # noqa: PLR0911
         """Connect to Mill."""
         # pylint: disable=too-many-return-statements
         payload = {"login": self._username, "password": self._password}
@@ -141,7 +141,7 @@ class Mill:
 
         return True
 
-    async def request(
+    async def request(  # noqa: C901, PLR0911, PLR0912
         self,
         command: str,
         payload: dict[str, Any] | None = None,
@@ -302,9 +302,8 @@ class Mill:
 
         cache = self._cached_stats_data.get(device_id)
         if cache and (
-            (now - cache[1] > dt.timedelta(days=10)) or (
-                now.day == 1 and now.hour < EARLY_MORNING_HOUR and now - cache[1] > dt.timedelta(hours=2)
-            )
+            (now - cache[1] > dt.timedelta(days=10))
+            or (now.day == 1 and now.hour < EARLY_MORNING_HOUR and now - cache[1] > dt.timedelta(hours=2))
         ):
             self._cached_stats_data.pop(device_id)
 
