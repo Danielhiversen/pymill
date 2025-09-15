@@ -1,4 +1,5 @@
 """Library to handle connection with mill."""
+
 from __future__ import annotations
 
 import asyncio
@@ -184,7 +185,7 @@ class Mill:
             if retry < 1:
                 _LOGGER.error("Timed out sending command to Mill: %s", url)
                 return None
-            await asyncio.sleep(max(0.5, 2**(3-retry) - 0.5))
+            await asyncio.sleep(max(0.5, 2 ** (3 - retry) - 0.5))
             return await self.request(command, payload, retry - 1, patch=patch)
         except aiohttp.ClientError:
             _LOGGER.error("Error sending command to Mill: %s", url, exc_info=True)
@@ -356,7 +357,11 @@ class Mill:
             except aiohttp.ClientResponseError:
                 _LOGGER.warning(
                     "Error when fetching stats for device_id=%s, year=%s, month=%s, day=%s, period=%s",
-                    device_id, date.year, date.month, date.day, "hourly"
+                    device_id,
+                    date.year,
+                    date.month,
+                    date.day,
+                    "hourly",
                 )
                 break
             for item in hourly_stats.get("energyUsage", {}).get("items", []):
@@ -384,7 +389,11 @@ class Mill:
         except TooManyRequests:
             _LOGGER.warning(
                 "Too many requests when fetching stats for device_id=%s, year=%s, month=%s, day=%s, period=%s",
-                device_id, year, month, day, period
+                device_id,
+                year,
+                month,
+                day,
+                period,
             )
             return {}
         if device_stats is None:
@@ -522,7 +531,7 @@ class Mill:
         """Extract expiration time from JWT token."""
         try:
             payload = jwt.decode(token, options={"verify_signature": False})
-            exp_timestamp = payload.get('exp')
+            exp_timestamp = payload.get("exp")
             if exp_timestamp:
                 return dt.datetime.fromtimestamp(exp_timestamp)
         except Exception as e:
@@ -664,6 +673,7 @@ class Heater(MillDevice):
 @dataclass()
 class Socket(Heater):
     """Representation of socket."""
+
     humidity: float | None = None
 
     def __post_init__(self) -> None:
