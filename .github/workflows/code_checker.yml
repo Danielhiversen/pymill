@@ -24,13 +24,7 @@ jobs:
       - name: Install dependency
         run: |
             pip install aiohttp PyJWT
-            pip install dlint flake8 flake8-bandit flake8-bugbear flake8-deprecated flake8-executable isort pylint
-      - name: Flake8 Code Linter
+            pip install ruff>=0.1.0
+      - name: Run ruff check and format
         run: |
-            flake8 mill/ --max-line-length=120 --extend-ignore=DUO102,DUO130,S303,S311
-      - name: isort
-        run: |
-            isort **/*.py
-      - name: Pylint Code Linter
-        run: |
-            pylint mill
+            ruff check mill/ --line-length=120 && ruff format --check mill/
