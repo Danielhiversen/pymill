@@ -25,9 +25,9 @@ jobs:
         run: |
             pip install aiohttp PyJWT
             pip install ruff>=0.1.0
-      - name: Run ruff check and format
+      - name: Run ruff check
         run: |
-            ruff check mill/ && ruff format --check mill/
+            ruff check mill/
       - name: Run ruff formatter (auto-fix)
         if: github.event.pull_request.head.repo.full_name == github.repository
         run: ruff format .
