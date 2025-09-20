@@ -501,7 +501,7 @@ class Mill:
                 "max_heater_power": heating_power,
             },
         }
-        await self.request(f"NOT_YET_IMPLEMENTED_ExprJoinedStr", payload, patch=True)
+        await self.request(f"devices/{device_id}/settings", payload, patch=True)
 
     async def set_heater_temp(self, device_id: str, set_temp: float) -> None:
         """Set heater temp."""
@@ -513,7 +513,7 @@ class Mill:
                 "temperature_normal": set_temp,
             },
         }
-        if await self.request(f"NOT_YET_IMPLEMENTED_ExprJoinedStr", payload, patch=True):
+        if await self.request(f"devices/{device_id}/settings", payload, patch=True):
             self._cached_data = {}
             self.devices[device_id].set_temp = set_temp
             self.devices[device_id].is_heating = set_temp > self.devices[device_id].current_temp
