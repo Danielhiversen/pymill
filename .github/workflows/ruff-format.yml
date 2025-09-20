@@ -21,7 +21,7 @@ jobs:
         run: pip install ruff
       - name: Run ruff formatter
         if: github.event.pull_request.head.repo.full_name == github.repository
-        run: ruff format .
+        run: find mill/ -name "*.py" -exec ruff format {} \;
       - name: Check for modified files
         if: github.event.pull_request.head.repo.full_name == github.repository
         id: git-check

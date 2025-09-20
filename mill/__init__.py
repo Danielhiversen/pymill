@@ -119,7 +119,7 @@ class Mill:
         async with LOCK:
             if dt.datetime.now(dt.timezone.utc) < self._token_expires:
                 return True
-            headers = {"Authorization": f"NOT_YET_IMPLEMENTED_ExprJoinedStr"}
+            headers = {"Authorization": f"Bearer {self._refresh_token}"}
             try:
                 async with asyncio.timeout(self._timeout):
                     response = await self.websession.post(
@@ -251,7 +251,7 @@ class Mill:
 
     async def _update_home(self, home: dict[str, Any]) -> None:
         independent_devices_data = await self.cached_request(
-            f"NOT_YET_IMPLEMENTED_ExprJoinedStr",
+            f"/houses/{home.get('id')}/devices/independent",
             ttl=60,
         )
         tasks = []
@@ -261,7 +261,7 @@ class Mill:
                 for device in independent_devices_data.get("items", [])
             )
 
-        rooms_data = await self.cached_request(f"NOT_YET_IMPLEMENTED_ExprJoinedStr")
+        rooms_data = await self.cached_request(f"houses/{home.get('id')}/devices")
         if rooms_data is not None:
             for room in rooms_data:
                 if not isinstance(room, dict):
@@ -275,7 +275,7 @@ class Mill:
         if (room_id := room.get("roomId")) is None:
             return
         room_data = await self.cached_request(
-            f"NOT_YET_IMPLEMENTED_ExprJoinedStr", ttl=90
+            f"rooms/{room_id}/devices", ttl=90
         )
 
         tasks = [
@@ -428,7 +428,7 @@ class Mill:
         """Fetch stats."""
         try:
             device_stats = await self.cached_request(
-                f"NOT_YET_IMPLEMENTED_ExprJoinedStr",
+                f"devices/{device_id}/statistics",
                 {
                     "period": period,
                     "year": year,
@@ -494,7 +494,7 @@ class Mill:
             payload["roomComfortTemperature"] = comfort_temp
 
         self._cached_data = {}
-        await self.request(f"NOT_YET_IMPLEMENTED_ExprJoinedStr", payload)
+        await self.request(f"rooms/{room_id}/temperature", payload)
 
     async def fetch_heater_data(self) -> dict[str, Heater | Socket]:
         """Request data."""
@@ -522,7 +522,7 @@ class Mill:
             },
         }
         if await self.request(
-            f"NOT_YET_IMPLEMENTED_ExprJoinedStr", payload, patch=True
+            f"devices/{device_id}/settings", payload, patch=True
         ):
             self._cached_data = {}
             self.devices[device_id].power_status = power_status
@@ -597,7 +597,7 @@ class Mill:
         return dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=10)
 
 
-@dataclass(kw_only=True)
+@dataclass
 class MillDevice:
     """Mill Device."""
 
