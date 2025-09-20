@@ -13,6 +13,7 @@ import jwt
 API_ENDPOINT = "https://api.millnorwaycloud.com/"
 DEFAULT_TIMEOUT = 10
 WINDOW_STATES = {0: "disabled", 3: "enabled_not_active", 2: "enabled_active"}
+DEFAULT_UA = "pymill/0.13.2"
 
 _LOGGER = logging.getLogger(__name__)
 LOCK = asyncio.Lock()
@@ -33,16 +34,23 @@ class Mill:
         password,
         timeout=DEFAULT_TIMEOUT,
         websession=None,
+        user_agent: str = DEFAULT_UA,
     ) -> None:
         """Initialize the Mill connection."""
         self.devices: dict = {}
+        self._ua = user_agent
+        self._timeout = timeout
+        self._lock = asyncio.Lock()
+        self._refresh_skew = 60
+
         if websession is None:
-
-            async def _create_session():
-                return aiohttp.ClientSession()
-
-            loop = asyncio.get_event_loop()
-            self.websession = loop.run_until_complete(_create_session())
+            self.websession = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=self._timeout),
+                headers={
+                    "User-Agent": self._ua,
+                    "Accept": "application/json",
+                },
+            )
         else:
             self.websession = websession
 
@@ -65,31 +73,46 @@ class Mill:
                 resp = await self.websession.post(
                     API_ENDPOINT + "customer/auth/sign-in",
                     json=payload,
+                    headers={
+                        "User-Agent": self._ua,
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                    },
                 )
         except (asyncio.TimeoutError, aiohttp.ClientError):
             if retry < 1:
                 _LOGGER.error("Error connecting to Mill", exc_info=True)
                 return False
             return await self.connect(retry - 1)
-        result = await resp.text()
 
-        if "Incorrect login or password" in result:
-            _LOGGER.error("Incorrect login or password, %s", result)
-            return False
-        data = json.loads(result)
+        try:
+            data = await resp.json(content_type=None)
+        except aiohttp.ContentTypeError:
+            result = await resp.text()
+            if "Incorrect login or password" in result or resp.status in (401, 403):
+                _LOGGER.error("Incorrect login or password")
+                return False
+            data = json.loads(result) if result else {}
+
         if not self._update_tokens(data):
             return False
 
         if self._user_id is not None:
             return True
+
         async with asyncio.timeout(self._timeout):
             resp = await self.websession.get(
                 API_ENDPOINT + "customer/details",
                 headers=self._headers,
             )
-        result = await resp.text()
-        data = json.loads(result)
-        if (user_id := data.get("id")) is None:
+        try:
+            data = await resp.json(content_type=None)
+        except aiohttp.ContentTypeError:
+            text = await resp.text()
+            data = json.loads(text) if text else {}
+
+        user_id = data.get("id")
+        if user_id is None:
             _LOGGER.error("No user id")
             return False
         self._user_id = user_id
@@ -99,6 +122,7 @@ class Mill:
     def _headers(self):
         return {
             "Authorization": "Bearer " + self._token,
+            "User-Agent": self._ua,
         }
 
     async def close_connection(self):
@@ -108,14 +132,18 @@ class Mill:
     async def refresh_token(self):
         """Refresh the token."""
         _LOGGER.info("Refreshing token")
-        async with LOCK:
-            if dt.datetime.now() < self._token_expires:
+        async with self._lock:
+            if self._token_expires and self._now() < (self._token_expires - dt.timedelta(seconds=self._refresh_skew)):
                 return True
-            headers = {"Authorization": f"Bearer {self._refresh_token}"}
+            headers = {
+                "Authorization": f"Bearer {self._refresh_token}",
+                "User-Agent": self._ua,
+                "Accept": "application/json",
+            }
             try:
                 async with asyncio.timeout(self._timeout):
                     response = await self.websession.post(
-                        API_ENDPOINT + "/customer/auth/refresh",
+                        API_ENDPOINT + "customer/auth/refresh",
                         headers=headers,
                     )
             except (asyncio.TimeoutError, aiohttp.ClientError):
@@ -124,12 +152,15 @@ class Mill:
             if response.status == 401:
                 return await self.connect()
 
-            data = await response.json()
+            try:
+                data = await response.json(content_type=None)
+            except aiohttp.ContentTypeError:
+                data = json.loads(await response.text() or "{}")
 
             if not self._update_tokens(data) and not await self.connect():
                 _LOGGER.error("Failed to refresh token")
                 return False
-            
+
         return True
 
     async def request(self, command, payload=None, retry=3, patch=False):
@@ -139,20 +170,30 @@ class Mill:
             _LOGGER.error("No token")
             return None
 
-        _LOGGER.debug("Request %s %s", command, payload or "")
-
-        if dt.datetime.now() >= self._token_expires:
-            _LOGGER.debug("Token expired, refreshing")
-            if not await self.refresh_token():
-                _LOGGER.error("Failed to refresh token")
+        def _retry_after_seconds(resp):
+            ra = resp.headers.get("Retry-After")
+            if not ra:
                 return None
-            _LOGGER.debug("Token refreshed")
+            try:
+                return float(ra)
+            except ValueError:
+                return None
 
-        url = API_ENDPOINT + command
+        _LOGGER.debug("Request %s %s", command, payload if payload is not None else "")
+
+        if self._token_expires and hasattr(self, "_refresh_skew"):
+            if self._now() >= (self._token_expires - dt.timedelta(seconds=self._refresh_skew)):
+                _LOGGER.debug("Token near/at expiry, refreshing")
+                if not await self.refresh_token():
+                    _LOGGER.error("Failed to refresh token")
+                    return None
+                _LOGGER.debug("Token refreshed")
+
+        url = API_ENDPOINT + command.lstrip("/")
 
         try:
             async with asyncio.timeout(self._timeout):
-                if payload:
+                if payload is not None:
                     if patch:
                         resp = await self.websession.patch(
                             url,
@@ -170,29 +211,44 @@ class Mill:
 
                 if resp.status == 401:
                     _LOGGER.debug("Invalid auth token")
+                    if retry - 1 < 0:
+                        _LOGGER.error("Retry budget exhausted for %s", url)
+                        return None
                     if await self.refresh_token():
-                        return await self.request(
-                            command, payload, retry - 1, patch=patch
-                        )
+                        return await self.request(command, payload, retry - 1, patch=patch)
                     _LOGGER.error("Invalid auth token")
                     return None
+
                 if resp.status == 429:
-                    raise TooManyRequests(await resp.text())
+                    delay = _retry_after_seconds(resp) or max(0.5, 2 ** (3 - retry) - 0.5)
+                    _LOGGER.warning("429 Too Many Requests. Retry in %.2fs for %s", delay, url)
+                    if retry < 1:
+                        raise TooManyRequests(await resp.text())
+                    await asyncio.sleep(delay)
+                    return await self.request(command, payload, retry - 1, patch=patch)
+
                 _LOGGER.debug("Status %s", resp.status)
                 resp.raise_for_status()
         except asyncio.TimeoutError:
             if retry < 1:
                 _LOGGER.error("Timed out sending command to Mill: %s", url)
                 return None
-            await asyncio.sleep(max(0.5, 2**(3-retry)- 0.5))
+            await asyncio.sleep(max(0.5, 2 ** (3 - retry) - 0.5))
             return await self.request(command, payload, retry - 1, patch=patch)
         except aiohttp.ClientError:
             _LOGGER.error("Error sending command to Mill: %s", url, exc_info=True)
             return None
 
-        result = await resp.text()
-        _LOGGER.debug("Result %s", result)
-        return json.loads(result)
+        try:
+            data = await resp.json(content_type=None)
+        except aiohttp.ContentTypeError:
+            text = await resp.text()
+            _LOGGER.debug("Result (text) %s", text)
+            data = json.loads(text) if text else None
+            return data
+
+        _LOGGER.debug("Result %s", data)
+        return data
 
     async def cached_request(self, url, payload=None, ttl=20 * 60):
         """Request data and cache."""
@@ -507,7 +563,7 @@ class Mill:
         else:
             _LOGGER.error("No token")
             return False
-        
+
         if refresh_token := data.get("refreshToken"):
             self._refresh_token = refresh_token
         else:
@@ -516,16 +572,20 @@ class Mill:
 
         return True
 
+    def _now(self):
+        """Get current datetime."""
+        return dt.datetime.now(dt.timezone.utc)
+
     def _get_token_expiration(self, token):
         """Extract expiration time from JWT token."""
         try:
             payload = jwt.decode(token, options={"verify_signature": False})
-            exp_timestamp = payload.get('exp')
+            exp_timestamp = payload.get("exp")
             if exp_timestamp:
-                return dt.datetime.fromtimestamp(exp_timestamp)
+                return dt.datetime.fromtimestamp(exp_timestamp, tz=dt.timezone.utc)
         except Exception as e:
             _LOGGER.warning("Could not decode token expiration, using default: %s", e)
-        return dt.datetime.now() + dt.timedelta(minutes=10)
+        return self._now() + dt.timedelta(minutes=10)
 
 
 @dataclass(kw_only=True)
