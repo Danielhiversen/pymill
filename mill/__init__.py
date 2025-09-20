@@ -46,6 +46,7 @@ class Mill:
         """Initialize the Mill connection."""
         self.devices: dict = {}
         if websession is None:
+
             async def _create_session() -> aiohttp.ClientSession:
                 return aiohttp.ClientSession()
 
@@ -185,9 +186,7 @@ class Mill:
                 if resp.status == HTTP_UNAUTHORIZED:
                     _LOGGER.debug("Invalid auth token")
                     if await self.refresh_token():
-                        return await self.request(
-                            command, payload, retry - 1, patch=patch
-                        )
+                        return await self.request(command, payload, retry - 1, patch=patch)
                     _LOGGER.error("Invalid auth token")
                     return None
                 if resp.status == HTTP_TOO_MANY_REQUESTS:
@@ -215,9 +214,7 @@ class Mill:
         ttl: int = 20 * 60,
     ) -> dict[str, Any] | None:
         """Request data and cache."""
-        res, timestamp, _payload = self._cached_data.get(
-            url + str(payload), (None, None, None)
-        )
+        res, timestamp, _payload = self._cached_data.get(url + str(payload), (None, None, None))
         if (
             url is not None
             and _payload == payload
@@ -256,10 +253,7 @@ class Mill:
         )
         tasks = []
         if independent_devices_data is not None:
-            tasks.extend(
-                self._update_device(device)
-                for device in independent_devices_data.get("items", [])
-            )
+            tasks.extend(self._update_device(device) for device in independent_devices_data.get("items", []))
 
         rooms_data = await self.cached_request(f"houses/{home.get('id')}/devices")
         if rooms_data is not None:
@@ -274,50 +268,34 @@ class Mill:
     async def _update_room(self, room: dict[str, Any]) -> None:
         if (room_id := room.get("roomId")) is None:
             return
-        room_data = await self.cached_request(
-            f"rooms/{room_id}/devices", ttl=90
-        )
+        room_data = await self.cached_request(f"rooms/{room_id}/devices", ttl=90)
 
-        tasks = [
-            self._update_device(device, room_data) for device in room.get("devices", [])
-        ]
+        tasks = [self._update_device(device, room_data) for device in room.get("devices", [])]
         await asyncio.gather(*tasks)
 
-    async def _update_device(
-        self, device_data: dict[str, Any], room_data: dict[str, Any] | None = None
-    ) -> None:
+    async def _update_device(self, device_data: dict[str, Any], room_data: dict[str, Any] | None = None) -> None:
         if device_data is None:
             _LOGGER.warning("No device data")
             return
-        device_type = device_data.get("deviceType", {}).get("parentType", {}).get(
-            "name"
-        )
+        device_type = device_data.get("deviceType", {}).get("parentType", {}).get("name")
         _id = device_data.get("deviceId")
 
         if device_type in ("Heaters", "Sockets"):
             now = dt.datetime.now(dt.timezone.utc)
-            if _id in self.devices and (
-                now - self.devices[_id].last_fetched < dt.timedelta(seconds=15)
-            ):
+            if _id in self.devices and (now - self.devices[_id].last_fetched < dt.timedelta(seconds=15)):
                 return
             device_stats = await self.fetch_yearly_stats(_id)
             if device_type == "Heaters":
-                self.devices[_id] = Heater.init_from_response(
-                    device_data, room_data, device_stats
-                )
+                self.devices[_id] = Heater.init_from_response(device_data, room_data, device_stats)
             else:
-                self.devices[_id] = Socket.init_from_response(
-                    device_data, room_data, device_stats
-                )
+                self.devices[_id] = Socket.init_from_response(device_data, room_data, device_stats)
         elif device_type in ("Sensors",):
             self.devices[_id] = Sensor.init_from_response(device_data)
         else:
             _LOGGER.error("Unsupported device, %s %s", device_type, device_data)
             return
 
-    async def fetch_yearly_stats(self, device_id: str, ttl: int = 30 * 60) -> (
-        dict[str, float]
-    ):
+    async def fetch_yearly_stats(self, device_id: str, ttl: int = 30 * 60) -> dict[str, float]:
         """Fetch yearly stats."""
 
         now = dt.datetime.now(dt.timezone.utc)
@@ -325,11 +303,7 @@ class Mill:
         cache = self._cached_stats_data.get(device_id)
         if cache and (
             (now - cache[1] > dt.timedelta(days=10))
-            or (
-                now.day == 1
-                and now.hour < EARLY_MORNING_HOUR
-                and now - cache[1] > dt.timedelta(hours=2)
-            )
+            or (now.day == 1 and now.hour < EARLY_MORNING_HOUR and now - cache[1] > dt.timedelta(hours=2))
         ):
             self._cached_stats_data.pop(device_id)
 
@@ -338,11 +312,9 @@ class Mill:
             for month in range(1, now.month):
                 _energy_prev_month += sum(
                     item.get("value", 0)
-                    for item in (
-                        await self.fetch_stats(
-                            device_id, now.year, month, 1, "daily", ttl=0
-                        )
-                    ).get("energyUsage", {}).get("items", [])
+                    for item in (await self.fetch_stats(device_id, now.year, month, 1, "daily", ttl=0))
+                    .get("energyUsage", {})
+                    .get("items", [])
                 )
             self._cached_stats_data[device_id] = _energy_prev_month, now
         else:
@@ -360,9 +332,7 @@ class Mill:
         for item in stats.get("energyUsage", {}).get("items", []) or []:
             if item["lostStatisticData"]:
                 _date = dt.datetime.fromisoformat(item["endPeriod"])
-                hourly_stats = await self.fetch_stats(
-                    device_id, _date.year, _date.month, _date.day, "hourly", ttl=ttl
-                )
+                hourly_stats = await self.fetch_stats(device_id, _date.year, _date.month, _date.day, "hourly", ttl=ttl)
                 for _item in hourly_stats.get("energyUsage", {}).get("items", []):
                     _energy_this_month += _item.get("value", 0)
                 continue
@@ -370,9 +340,7 @@ class Mill:
 
         return {"yearly_consumption": (_energy_this_month + _energy_prev_month)}
 
-    async def fetch_historic_energy_usage(self, device_id: str, n_days: int = 4) -> (
-        dict[dt.datetime, float]
-    ):
+    async def fetch_historic_energy_usage(self, device_id: str, n_days: int = 4) -> dict[dt.datetime, float]:
         """Fetch historic energy usage."""
         now = dt.datetime.now(dt.timezone.utc)
         res = {}
@@ -380,17 +348,13 @@ class Mill:
 
         for day in range(n_days + 1):
             date = now - dt.timedelta(days=n_days - day)
-            hourly_stats = await self._fetch_stats_safe(
-                device_id, date.year, date.month, date.day, "hourly"
-            )
+            hourly_stats = await self._fetch_stats_safe(device_id, date.year, date.month, date.day, "hourly")
             if hourly_stats is None:
                 break
             for item in hourly_stats.get("energyUsage", {}).get("items", []):
-                res[
-                    dt.datetime.fromisoformat(item["startPeriod"]).astimezone(
-                        dt.timezone.utc
-                    )
-                ] = item.get("value", 0) / 1000.0
+                res[dt.datetime.fromisoformat(item["startPeriod"]).astimezone(dt.timezone.utc)] = (
+                    item.get("value", 0) / 1000.0
+                )
         return res
 
     async def _fetch_stats_safe(
@@ -499,10 +463,7 @@ class Mill:
     async def fetch_heater_data(self) -> dict[str, Heater | Socket]:
         """Request data."""
         await self.update_devices()
-        return {
-            key: val
-            for key, val in self.devices.items() if isinstance(val, Heater | Socket)
-        }
+        return {key: val for key, val in self.devices.items() if isinstance(val, Heater | Socket)}
 
     async def fetch_heater_and_sensor_data(self) -> dict[str, MillDevice]:
         """Request data."""
@@ -517,21 +478,16 @@ class Mill:
         payload = {
             "deviceType": self.devices[device_id].device_type,
             "enabled": power_status,
-            "settings": {
-                "operation_mode": "control_individually" if power_status > 0 else "off"
-            },
+            "settings": {"operation_mode": "control_individually" if power_status > 0 else "off"},
         }
-        if await self.request(
-            f"devices/{device_id}/settings", payload, patch=True
-        ):
+        if await self.request(f"devices/{device_id}/settings", payload, patch=True):
             self._cached_data = {}
             self.devices[device_id].power_status = power_status
             if not power_status:
                 self.devices[device_id].is_heating = False
             else:
                 self.devices[device_id].is_heating = (
-                    self.devices[device_id].set_temp
-                    > self.devices[device_id].current_temp
+                    self.devices[device_id].set_temp > self.devices[device_id].current_temp
                 )
             self.devices[device_id].last_fetched = dt.datetime.now(dt.timezone.utc)
 
@@ -557,19 +513,15 @@ class Mill:
                 "temperature_normal": set_temp,
             },
         }
-        if await self.request(
-            f"NOT_YET_IMPLEMENTED_ExprJoinedStr", payload, patch=True
-        ):
+        if await self.request(f"NOT_YET_IMPLEMENTED_ExprJoinedStr", payload, patch=True):
             self._cached_data = {}
             self.devices[device_id].set_temp = set_temp
-            self.devices[device_id].is_heating = (
-                set_temp > self.devices[device_id].current_temp
-            )
+            self.devices[device_id].is_heating = set_temp > self.devices[device_id].current_temp
             self.devices[device_id].last_fetched = dt.datetime.now(dt.timezone.utc)
 
     def _update_tokens(self, data: dict[str, Any]) -> bool:
         """Update access and refresh tokens from API response data."""
-        if (token := data.get("idToken")):
+        if token := data.get("idToken"):
             self._token = token
             self._token_expires = self._get_token_expiration(token)
             _LOGGER.debug("Token expires at %s", self._token_expires)
@@ -577,7 +529,7 @@ class Mill:
             _LOGGER.error("No token")
             return False
 
-        if (refresh_token := data.get("refreshToken")):
+        if refresh_token := data.get("refreshToken"):
             self._refresh_token = refresh_token
         else:
             _LOGGER.error("No refresh token")
@@ -649,9 +601,7 @@ class MillDevice:
         """Last updated."""
         if self.report_time is None:
             return dt.datetime.fromtimestamp(0).astimezone(dt.timezone.utc)
-        return dt.datetime.fromtimestamp(self.report_time / 1000).astimezone(
-            dt.timezone.utc
-        )
+        return dt.datetime.fromtimestamp(self.report_time / 1000).astimezone(dt.timezone.utc)
 
 
 @dataclass()
@@ -667,9 +617,7 @@ class Heater(MillDevice):
     home_id: str | None = None
     independent_device: bool | None = None
     is_heating: bool | None = None
-    last_fetched: dt.datetime = field(
-        default_factory=lambda: dt.datetime.fromtimestamp(0, tz=dt.timezone.utc)
-    )
+    last_fetched: dt.datetime = field(default_factory=lambda: dt.datetime.fromtimestamp(0, tz=dt.timezone.utc))
     open_window: str | None = None
     power_status: bool | None = None
     room_avg_temp: float | None = None
@@ -684,19 +632,13 @@ class Heater(MillDevice):
         """Post init."""
         if self.data:
             last_metrics = self.data.get("lastMetrics", {})
-            device_settings_desired = self.data.get("deviceSettings", {}).get(
-                "desired", {}
-            )
+            device_settings_desired = self.data.get("deviceSettings", {}).get("desired", {})
             if last_metrics is not None:
                 self.current_temp = last_metrics.get("temperatureAmbient")
                 self.is_heating = last_metrics.get("heaterFlag", 0) > 0
                 self.power_status = last_metrics.get("powerStatus", 0) > 0
-                self.set_temp = device_settings_desired.get(
-                    "temperature_normal", last_metrics.get("temperature")
-                )
-                self.open_window = WINDOW_STATES.get(
-                    last_metrics.get("openWindowsStatus")
-                )
+                self.set_temp = device_settings_desired.get("temperature_normal", last_metrics.get("temperature"))
+                self.open_window = WINDOW_STATES.get(last_metrics.get("openWindowsStatus"))
                 self.control_signal = last_metrics.get("controlSignal")
                 self.current_power = last_metrics.get("currentPower")
                 self.total_consumption = last_metrics.get("energyUsage")
@@ -707,9 +649,7 @@ class Heater(MillDevice):
         if self.stats:
             self.year_consumption = self.stats.get("yearly_consumption", 0) / 1000.0
         if self.room_data:
-            self.tibber_control = (
-                self.room_data.get("controlSource", {}).get("tibber") == 1
-            )
+            self.tibber_control = self.room_data.get("controlSource", {}).get("tibber") == 1
             self.home_id = self.room_data.get("houseId")
             self.room_id = self.room_data.get("id")
             self.room_name = self.room_data.get("name")
