@@ -251,7 +251,7 @@ class Mill:
 
     async def _update_home(self, home: dict[str, Any]) -> None:
         independent_devices_data = await self.cached_request(
-            f"/houses/{home.get('id')}/devices/independent",
+            f"houses/{home.get('id')}/devices/independent",
             ttl=60,
         )
         tasks = []
