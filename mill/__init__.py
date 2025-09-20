@@ -141,7 +141,7 @@ class Mill:
 
         return True
 
-    async def request(  # noqa: C901, PLR0911, PLR0912
+    async def request(
         self,
         command: str,
         payload: dict[str, Any] | None = None,
@@ -302,8 +302,9 @@ class Mill:
 
         cache = self._cached_stats_data.get(device_id)
         if cache and (
-            (now - cache[1] > dt.timedelta(days=10))
-            or (now.day == 1 and now.hour < EARLY_MORNING_HOUR and now - cache[1] > dt.timedelta(hours=2))
+            (now - cache[1] > dt.timedelta(days=10)) or (
+                now.day == 1 and now.hour < EARLY_MORNING_HOUR and now - cache[1] > dt.timedelta(hours=2)
+            )
         ):
             self._cached_stats_data.pop(device_id)
 
