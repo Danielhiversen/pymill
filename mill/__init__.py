@@ -45,7 +45,7 @@ class Mill:
         password: str,
         timeout: int = DEFAULT_TIMEOUT,
         websession: aiohttp.ClientSession | None = None,
-        user_agent: str = DEFAULT_UA,
+        user_agent: str | None = None,
     ) -> None:
         """Initialize the Mill connection."""
         self.devices: dict = {}
@@ -115,10 +115,10 @@ class Mill:
 
     @property
     def _headers(self) -> dict[str, str]:
-        return {
-            "Authorization": "Bearer " + self._token,
-            "User-Agent": self._ua,
-        }
+        headers = {"Authorization": "Bearer " + self._token}
+        if self._ua:
+            headers["User-Agent"] = self._ua
+        return headers
 
     @property
     def user_agent(self) -> str:
