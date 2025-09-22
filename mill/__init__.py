@@ -114,11 +114,11 @@ class Mill:
         """Close the Mill connection."""
         await self.websession.close()
 
-    async def refresh_token(self, force: bool = False):
+    async def refresh_token(self, force: bool = False) -> bool:
         """Refresh the token."""
         _LOGGER.info("Refreshing token%s", " (forced)" if force else "")
         async with LOCK:
-            if not force and self._token_expires and dt.datetime.now() < self._token_expires:
+            if not force and self._token_expires and dt.datetime.now(dt.timezone.utc) < self._token_expires:
                 return True
             headers = {"Authorization": f"Bearer {self._refresh_token}"}
             try:
