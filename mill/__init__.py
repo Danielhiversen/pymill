@@ -9,10 +9,12 @@ import logging
 
 import aiohttp
 import jwt
+from .consts import __version__
 
 API_ENDPOINT = "https://api.millnorwaycloud.com/"
 DEFAULT_TIMEOUT = 10
 WINDOW_STATES = {0: "disabled", 3: "enabled_not_active", 2: "enabled_active"}
+DEFAULT_UA = f"pymill/{__version__}"
 
 _LOGGER = logging.getLogger(__name__)
 LOCK = asyncio.Lock()
@@ -33,9 +35,12 @@ class Mill:
         password,
         timeout=DEFAULT_TIMEOUT,
         websession=None,
+        user_agent: str = DEFAULT_UA,
     ) -> None:
         """Initialize the Mill connection."""
         self.devices: dict = {}
+        self._ua = user_agent
+
         if websession is None:
 
             async def _create_session():
@@ -65,6 +70,9 @@ class Mill:
                 resp = await self.websession.post(
                     API_ENDPOINT + "customer/auth/sign-in",
                     json=payload,
+                    headers={
+                        "User-Agent": self._ua,
+                    },
                 )
         except (asyncio.TimeoutError, aiohttp.ClientError):
             if retry < 1:
@@ -99,7 +107,12 @@ class Mill:
     def _headers(self):
         return {
             "Authorization": "Bearer " + self._token,
+            "User-Agent": self._ua,
         }
+
+    @property
+    def user_agent(self) -> str:
+        return self._ua
 
     async def close_connection(self):
         """Close the Mill connection."""
@@ -111,7 +124,7 @@ class Mill:
         async with LOCK:
             if dt.datetime.now() < self._token_expires:
                 return True
-            headers = {"Authorization": f"Bearer {self._refresh_token}"}
+            headers = {"Authorization": f"Bearer {self._refresh_token}", "User-Agent": self._ua,}
             try:
                 async with asyncio.timeout(self._timeout):
                     response = await self.websession.post(
