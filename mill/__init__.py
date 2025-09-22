@@ -11,6 +11,7 @@ from typing import Any
 
 import aiohttp
 import jwt
+
 from .consts import __version__
 
 API_ENDPOINT = "https://api.millnorwaycloud.com/"
