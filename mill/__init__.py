@@ -12,12 +12,9 @@ from typing import Any
 import aiohttp
 import jwt
 
-from .consts import __version__
-
 API_ENDPOINT = "https://api.millnorwaycloud.com/"
 DEFAULT_TIMEOUT = 10
 WINDOW_STATES = {0: "disabled", 3: "enabled_not_active", 2: "enabled_active"}
-DEFAULT_UA = f"pymill/{__version__}"
 
 # HTTP status codes
 HTTP_UNAUTHORIZED = 401
