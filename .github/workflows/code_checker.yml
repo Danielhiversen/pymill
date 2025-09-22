@@ -14,22 +14,34 @@ jobs:
         python-version:
           - "3.10"
           - "3.11"
+          - "3.12"
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependency
         run: |
             pip install aiohttp PyJWT
-            pip install dlint flake8 flake8-bandit flake8-bugbear flake8-deprecated flake8-executable isort pylint
-      - name: Flake8 Code Linter
+            pip install ruff>=0.1.0
+      - name: Run ruff check
         run: |
-            flake8 mill/ --max-line-length=120 --extend-ignore=DUO102,DUO130,S303,S311
-      - name: isort
+            ruff check mill/
+      - name: Run ruff formatter (auto-fix)
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        run: ruff format .
+      - name: Check for modified files
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        id: git-check
+        run: echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
+      - name: Push changes
+        if: github.event.pull_request.head.repo.full_name == github.repository && steps.git-check.outputs.modified == 'true'
         run: |
-            isort **/*.py
-      - name: Pylint Code Linter
-        run: |
-            pylint mill
+            git config --global user.name 'Daniel Hoyer'
+            git config --global user.email 'mail@dahoiv.net'
+            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY
+            git fetch origin
+            git checkout ${{ github.head_ref || github.ref_name }}
+            git commit -am "fixup! Format Python code with ruff"
+            git push
