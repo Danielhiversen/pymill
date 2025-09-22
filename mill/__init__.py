@@ -189,9 +189,7 @@ class Mill:
                 if resp.status == HTTP_UNAUTHORIZED:
                     _LOGGER.debug("Invalid auth token")
                     if await self.refresh_token(force=True):
-                        return await self.request(
-                            command, payload, retry - 1, patch=patch
-                        )
+                        return await self.request(command, payload, retry - 1, patch=patch)
                     _LOGGER.error("Invalid auth token")
                     return None
                 if resp.status == HTTP_TOO_MANY_REQUESTS:
