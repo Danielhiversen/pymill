@@ -123,7 +123,7 @@ class Mill:
     def user_agent(self) -> str:
         return self._ua
 
-    async def close_connection(self) -> None
+    async def close_connection(self) -> None:
         """Close the Mill connection."""
         await self.websession.close()
 
@@ -133,7 +133,7 @@ class Mill:
         async with LOCK:
             if dt.datetime.now(dt.timezone.utc) < self._token_expires:
                 return True
-            headers = {"Authorization": f"Bearer {self._refresh_token}", "User-Agent": self._ua,}
+            headers = {"Authorization": f"Bearer {self._refresh_token}", "User-Agent": self._ua}
             try:
                 async with asyncio.timeout(self._timeout):
                     response = await self.websession.post(
