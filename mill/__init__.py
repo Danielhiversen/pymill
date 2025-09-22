@@ -105,17 +105,17 @@ class Mill:
         """Close the Mill connection."""
         await self.websession.close()
 
-    async def refresh_token(self):
+    async def refresh_token(self, force: bool = False):
         """Refresh the token."""
-        _LOGGER.info("Refreshing token")
+        _LOGGER.info("Refreshing token%s", " (forced)" if force else "")
         async with LOCK:
-            if dt.datetime.now() < self._token_expires:
+            if not force and self._token_expires and dt.datetime.now() < self._token_expires:
                 return True
             headers = {"Authorization": f"Bearer {self._refresh_token}"}
             try:
                 async with asyncio.timeout(self._timeout):
                     response = await self.websession.post(
-                        API_ENDPOINT + "/customer/auth/refresh",
+                        API_ENDPOINT + "customer/auth/refresh",
                         headers=headers,
                     )
             except (asyncio.TimeoutError, aiohttp.ClientError):
@@ -124,12 +124,15 @@ class Mill:
             if response.status == 401:
                 return await self.connect()
 
-            data = await response.json()
+            try:
+                data = await response.json()
+            except aiohttp.ContentTypeError:
+                data = json.loads(await response.text() or "{}")
 
-            if not self._update_tokens(data) and not await self.connect():
+            if not self._update_tokens(data):
                 _LOGGER.error("Failed to refresh token")
                 return False
-            
+
         return True
 
     async def request(self, command, payload=None, retry=3, patch=False):
@@ -170,7 +173,7 @@ class Mill:
 
                 if resp.status == 401:
                     _LOGGER.debug("Invalid auth token")
-                    if await self.refresh_token():
+                    if await self.refresh_token(force=True):
                         return await self.request(
                             command, payload, retry - 1, patch=patch
                         )
