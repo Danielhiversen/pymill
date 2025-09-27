@@ -12,8 +12,6 @@ from typing import Any
 import aiohttp
 import jwt
 
-from .consts import __version__  # ensure this exists and holds the library version
-
 API_ENDPOINT = "https://api.millnorwaycloud.com/"
 DEFAULT_TIMEOUT = 10
 WINDOW_STATES = {0: "disabled", 3: "enabled_not_active", 2: "enabled_active"}
