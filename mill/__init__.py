@@ -30,11 +30,6 @@ LOCK = asyncio.Lock()
 class TooManyRequestsError(Exception):
     """Too many requests."""
 
-
-class UserAgentMissingError(Exception):
-    """User-Agent is required but missing."""
-
-
 class Mill:
     """Class to communicate with the Mill api."""
 
