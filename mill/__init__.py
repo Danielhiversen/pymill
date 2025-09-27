@@ -627,6 +627,7 @@ class Heater(MillDevice):
     tibber_control: bool | None = None
     total_consumption: float | None = None
     year_consumption: float | None = None
+    floor_temperature: float | None = None
 
     def __post_init__(self) -> None:
         """Post init."""
@@ -642,6 +643,7 @@ class Heater(MillDevice):
                 self.control_signal = last_metrics.get("controlSignal")
                 self.current_power = last_metrics.get("currentPower")
                 self.total_consumption = last_metrics.get("energyUsage")
+                self.floor_temperature = last_metrics.get("floorTemperature")
             else:
                 _LOGGER.warning("No last metrics for device %s", self.device_id)
             self.day_consumption = self.data.get("energyUsageForCurrentDay", 0) / 1000.0
@@ -694,6 +696,11 @@ class Sensor(MillDevice):
     tvoc: float | None = None
     eco2: float | None = None
     battery: float | None = None
+    pm1: float | None = None
+    pm25: float | None = None
+    pm10: float | None = None
+    particles: float | None = None
+    filter_state: str | None = None
 
     def __post_init__(self) -> None:
         """Post init."""
@@ -704,6 +711,14 @@ class Sensor(MillDevice):
             self.tvoc = last_metrics.get("tvoc")
             self.eco2 = last_metrics.get("eco2")
             self.battery = last_metrics.get("batteryPercentage")
+            self.pm1 = last_metrics.get("massPm_10")
+            self.pm25 = last_metrics.get("massPm_25")
+            self.pm10 = last_metrics.get("massPm_100")
+            if self.pm1 is not None and self.pm25 is not None and self.pm10 is not None:
+                self.particles = round((float(self.pm1)+float(self.pm25)+float(self.pm10))/3, 2)
+            self.filter_state = (
+                self.data.get("deviceSettings", {}).get("reported", {}).get("filter_state")
+            )
 
     @property
     def device_type(self) -> str:
