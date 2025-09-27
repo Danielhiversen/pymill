@@ -12,6 +12,8 @@ from typing import Any
 import aiohttp
 import jwt
 
+from .consts import __version__  # ensure this exists and holds the library version
+
 API_ENDPOINT = "https://api.millnorwaycloud.com/"
 DEFAULT_TIMEOUT = 10
 WINDOW_STATES = {0: "disabled", 3: "enabled_not_active", 2: "enabled_active"}
@@ -31,6 +33,10 @@ class TooManyRequestsError(Exception):
     """Too many requests."""
 
 
+class UserAgentMissingError(Exception):
+    """User-Agent is required but missing."""
+
+
 class Mill:
     """Class to communicate with the Mill api."""
 
@@ -46,7 +52,6 @@ class Mill:
     ) -> None:
         """Initialize the Mill connection."""
         self.devices: dict = {}
-        self._ua = user_agent
 
         if websession is None:
 
@@ -58,6 +63,7 @@ class Mill:
         else:
             self.websession = websession
 
+        self._ua: str | None = user_agent
         self._timeout = timeout
         self._username = username
         self._password = password
@@ -77,9 +83,7 @@ class Mill:
                 resp = await self.websession.post(
                     API_ENDPOINT + "customer/auth/sign-in",
                     json=payload,
-                    headers={
-                        "User-Agent": self._ua,
-                    },
+                    headers=({"User-Agent": self._ua} if self._ua else None),
                 )
         except (asyncio.TimeoutError, aiohttp.ClientError):
             if retry < 1:
@@ -112,7 +116,7 @@ class Mill:
 
     @property
     def _headers(self) -> dict[str, str]:
-        headers = {"Authorization": "Bearer " + self._token}
+        headers: dict[str, str] = {"Authorization": "Bearer " + self._token}
         if self._ua:
             headers["User-Agent"] = self._ua
         return headers
@@ -131,7 +135,9 @@ class Mill:
         async with LOCK:
             if dt.datetime.now(dt.timezone.utc) < self._token_expires:
                 return True
-            headers = {"Authorization": f"Bearer {self._refresh_token}", "User-Agent": self._ua}
+            headers = {"Authorization": f"Bearer {self._refresh_token}"}
+            if self._ua:
+                headers["User-Agent"] = self._ua
             try:
                 async with asyncio.timeout(self._timeout):
                     response = await self.websession.post(
