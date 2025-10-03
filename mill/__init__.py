@@ -30,6 +30,7 @@ LOCK = asyncio.Lock()
 class TooManyRequestsError(Exception):
     """Too many requests."""
 
+
 class Mill:
     """Class to communicate with the Mill api."""
 
@@ -725,10 +726,8 @@ class Sensor(MillDevice):
             self.pm25 = last_metrics.get("massPm_25")
             self.pm10 = last_metrics.get("massPm_100")
             if self.pm1 is not None and self.pm25 is not None and self.pm10 is not None:
-                self.particles = round((float(self.pm1)+float(self.pm25)+float(self.pm10))/3, 2)
-            self.filter_state = (
-                self.data.get("deviceSettings", {}).get("reported", {}).get("filter_state")
-            )
+                self.particles = round((float(self.pm1) + float(self.pm25) + float(self.pm10)) / 3, 2)
+            self.filter_state = self.data.get("deviceSettings", {}).get("reported", {}).get("filter_state")
 
     @property
     def device_type(self) -> str:
