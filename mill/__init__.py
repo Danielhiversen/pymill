@@ -538,7 +538,11 @@ class Mill:
             _LOGGER.error("Device id %s not found", device_id)
             return False
         if getattr(device, "device_type", None) != "Heaters":
-            _LOGGER.debug("Ignored settings for non-heater device %s (%s)", device_id, getattr(device, "device_type", None))
+            _LOGGER.debug(
+                "Ignored settings for non-heater device %s (%s)",
+                device_id,
+                getattr(device, "device_type", None),
+            )
             return False
 
         payload: dict[str, Any] = {
