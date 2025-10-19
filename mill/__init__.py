@@ -530,6 +530,43 @@ class Mill:
             self.devices[device_id].is_heating = set_temp > self.devices[device_id].current_temp
             self.devices[device_id].last_fetched = dt.datetime.now(dt.timezone.utc)
 
+    async def _patch_heater_settings(self, device_id: str, settings: dict[str, Any]) -> bool:
+        """PATCH /devices/{id}/settings for heaters."""
+        device = self.devices.get(device_id)
+
+        if not device:
+            _LOGGER.error("Device id %s not found", device_id)
+            return False
+        if getattr(device, "device_type", None) != "Heaters":
+            _LOGGER.debug("Ignored settings for non-heater device %s (%s)", device_id, getattr(device, "device_type", None))
+            return False
+
+        payload: dict[str, Any] = {
+            "deviceType": device.device_type,
+            "enabled": bool(getattr(device, "power_status", True)),
+            "settings": settings,
+        }
+
+        ok = await self.request(f"devices/{device_id}/settings", payload, patch=True)
+        if ok:
+            self._cached_data = {}
+            device.last_fetched = dt.datetime.now(dt.timezone.utc)
+        return ok is not None
+
+    async def set_individual_control(self, device_id: str, enabled: bool) -> None:
+        """Switch: manual/individual control on/off."""
+        mode = "control_individually" if enabled else "weekly_program"
+        await self._patch_heater_settings(device_id, {"operation_mode": mode})
+
+    async def set_child_lock(self, device_id: str, enabled: bool) -> None:
+        """Switch: child lock on/off."""
+        status = "child_lock" if enabled else "no_lock"
+        await self._patch_heater_settings(device_id, {"lock_status": status})
+
+    async def set_open_window(self, device_id: str, enabled: bool) -> None:
+        """Switch: open-window detection on/off."""
+        await self._patch_heater_settings(device_id, {"open_window": {"enabled": bool(enabled)}})
+
     def _update_tokens(self, data: dict[str, Any]) -> bool:
         """Update access and refresh tokens from API response data."""
         if token := data.get("idToken"):
