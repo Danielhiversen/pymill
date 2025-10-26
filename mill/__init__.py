@@ -537,17 +537,16 @@ class Mill:
         if not device:
             _LOGGER.error("Device id %s not found", device_id)
             return False
-        if getattr(device, "device_type", None) != "Heaters":
-            _LOGGER.debug(
-                "Ignored settings for non-heater device %s (%s)",
-                device_id,
-                getattr(device, "device_type", None),
-            )
+
+        if not isinstance(device, Heater):
+            _LOGGER.debug("Ignored settings for non-heater device %s (%s)", device_id, device.device_type)
             return False
+
+        enabled = True if device.power_status is None else bool(device.power_status)
 
         payload: dict[str, Any] = {
             "deviceType": device.device_type,
-            "enabled": bool(getattr(device, "power_status", True)),
+            "enabled": enabled,
             "settings": settings,
         }
 
