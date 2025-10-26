@@ -534,7 +534,7 @@ class Mill:
         """PATCH /devices/{id}/settings for heaters."""
         device = self.devices.get(device_id)
 
-        if not device:
+        if not device or not isinstance(device, Heater):
             _LOGGER.error("Device id %s not found", device_id)
             return False
 
