@@ -538,10 +538,6 @@ class Mill:
             _LOGGER.error("Device id %s not found", device_id)
             return False
 
-        if not isinstance(device, Heater):
-            _LOGGER.debug("Ignored settings for non-heater device %s (%s)", device_id, device.device_type)
-            return False
-
         enabled = True if device.power_status is None else bool(device.power_status)
 
         payload: dict[str, Any] = {
@@ -551,10 +547,17 @@ class Mill:
         }
 
         ok = await self.request(f"devices/{device_id}/settings", payload, patch=True)
-        if ok:
-            self._cached_data = {}
-            device.last_fetched = dt.datetime.now(dt.timezone.utc)
-        return ok is not None
+        if not resp:
+            _LOGGER.error("Failed to patch settings for %s. Payload=%s", device_id, settings)
+            return False
+
+        if isinstance(resp, dict) and resp.get("success") is False:
+            _LOGGER.error("Mill API rejected settings for %s: %s", device_id, resp)
+            return False
+
+        self._cached_data.clear()
+        device.last_fetched = dt.datetime.now(dt.timezone.utc)
+        return True
 
     async def set_individual_control(self, device_id: str, enabled: bool) -> None:
         """Switch: manual/individual control on/off."""
@@ -568,7 +571,7 @@ class Mill:
 
     async def set_open_window(self, device_id: str, enabled: bool) -> None:
         """Switch: open-window detection on/off."""
-        await self._patch_heater_settings(device_id, {"open_window": {"enabled": bool(enabled)}})
+        await self._patch_heater_settings(device_id, {"open_window": {"enabled": enabled}})
 
     def _update_tokens(self, data: dict[str, Any]) -> bool:
         """Update access and refresh tokens from API response data."""
