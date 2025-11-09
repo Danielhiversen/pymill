@@ -530,6 +530,13 @@ class Mill:
             self.devices[device_id].is_heating = set_temp > self.devices[device_id].current_temp
             self.devices[device_id].last_fetched = dt.datetime.now(dt.timezone.utc)
 
+    async def set_night_saving(self, device_id: str, enabled: bool) -> bool:
+        """Enable or disable night saving mode."""
+        _LOGGER.debug("Setting night saving to %s for %s", enabled, device_id)
+        return await self._patch_device_settings(
+            device_id, {"night_saving_mode_active": enabled}
+        )
+
     def _update_tokens(self, data: dict[str, Any]) -> bool:
         """Update access and refresh tokens from API response data."""
         if token := data.get("idToken"):
@@ -639,12 +646,18 @@ class Heater(MillDevice):
     total_consumption: float | None = None
     year_consumption: float | None = None
     floor_temperature: float | None = None
+    regulator_type: str | None = None
+    predictive_heating: bool | None = None
+    night_saving: bool | None = None
 
     def __post_init__(self) -> None:
         """Post init."""
         if self.data:
             last_metrics = self.data.get("lastMetrics", {})
-            device_settings_desired = self.data.get("deviceSettings", {}).get("desired", {})
+            device_settings = self.data.get("deviceSettings", {})
+            device_settings_reported = device_settings.get("reported", {})
+            device_settings_desired = device_settings.get("desired", {})
+
             if last_metrics is not None:
                 self.current_temp = last_metrics.get("temperatureAmbient")
                 self.is_heating = last_metrics.get("heaterFlag", 0) > 0
@@ -657,6 +670,16 @@ class Heater(MillDevice):
                 self.floor_temperature = last_metrics.get("floorTemperature")
             else:
                 _LOGGER.warning("No last metrics for device %s", self.device_id)
+
+            if device_settings_reported:
+                self.regulator_type = device_settings_reported.get("regulator_type")
+                self.predictive_heating = (
+                    device_settings_reported.get("predictive_heating_type") == "advanced"
+                )
+                self.night_saving = device_settings_reported.get(
+                    "night_saving_mode_active"
+                )
+
             self.day_consumption = self.data.get("energyUsageForCurrentDay", 0) / 1000.0
 
         if self.stats:
