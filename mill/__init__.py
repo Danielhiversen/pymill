@@ -530,13 +530,11 @@ class Mill:
             self.devices[device_id].is_heating = set_temp > self.devices[device_id].current_temp
             self.devices[device_id].last_fetched = dt.datetime.now(dt.timezone.utc)
 
-    async def set_predictive_heating(self, device_id: str, enabled: bool) -> bool:
-        """Enable or disable predictive heating."""
-        _LOGGER.debug("Setting predictive heating to %s for %s", enabled, device_id)
-        mode = "advanced" if enabled else "off"
-        return await self._patch_device_settings(
-            device_id, {"predictive_heating_type": mode}
-        )
+    async def set_commercial_lock(self, device_id: str, enabled: bool) -> bool:
+        """Switch: commercial lock on/off."""
+        _LOGGER.debug("Setting commercial lock to %s for %s", enabled, device_id)
+        status = "commercial" if enabled else "no_lock"
+        return await self._patch_device_settings(device_id, {"lock_status": status})
 
     def _update_tokens(self, data: dict[str, Any]) -> bool:
         """Update access and refresh tokens from API response data."""
@@ -647,8 +645,7 @@ class Heater(MillDevice):
     total_consumption: float | None = None
     year_consumption: float | None = None
     floor_temperature: float | None = None
-    regulator_type: str | None = None
-    predictive_heating: bool | None = None
+    commercial_lock: bool | None = None
 
     def __post_init__(self) -> None:
         """Post init."""
@@ -672,9 +669,8 @@ class Heater(MillDevice):
                 _LOGGER.warning("No last metrics for device %s", self.device_id)
 
             if device_settings_reported:
-                self.regulator_type = device_settings_reported.get("regulator_type")
-                self.predictive_heating = (
-                    device_settings_reported.get("predictive_heating_type") == "advanced"
+                self.commercial_lock = (
+                    device_settings_reported.get("lock_status") == "commercial"
                 )
 
             self.day_consumption = self.data.get("energyUsageForCurrentDay", 0) / 1000.0
