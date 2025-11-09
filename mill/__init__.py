@@ -530,12 +530,12 @@ class Mill:
             self.devices[device_id].is_heating = set_temp > self.devices[device_id].current_temp
             self.devices[device_id].last_fetched = dt.datetime.now(dt.timezone.utc)
 
-    async def set_predictive_heating(self, device_id: str, enabled: bool) -> bool:
-        """Enable or disable predictive heating."""
-        _LOGGER.debug("Setting predictive heating to %s for %s", enabled, device_id)
-        mode = "advanced" if enabled else "off"
+    async def set_cooling_mode(self, device_id: str, enabled: bool) -> bool:
+        """Enable or disable cooling mode for sockets."""
+        _LOGGER.debug("Setting cooling mode to %s for %s", enabled, device_id)
+        mode = "cooling" if enabled else None
         return await self._patch_device_settings(
-            device_id, {"predictive_heating_type": mode}
+            device_id, {"additional_socket_mode": mode}
         )
 
     def _update_tokens(self, data: dict[str, Any]) -> bool:
@@ -647,8 +647,6 @@ class Heater(MillDevice):
     total_consumption: float | None = None
     year_consumption: float | None = None
     floor_temperature: float | None = None
-    regulator_type: str | None = None
-    predictive_heating: bool | None = None
 
     def __post_init__(self) -> None:
         """Post init."""
@@ -702,12 +700,21 @@ class Socket(Heater):
     """Representation of socket."""
 
     humidity: float | None = None
+    cooling_mode: bool | None = None
 
     def __post_init__(self) -> None:
         """Post init."""
         if self.data:
             last_metrics = self.data.get("lastMetrics", {})
             self.humidity = last_metrics.get("humidity")
+
+            device_settings = self.data.get("deviceSettings", {})
+            device_settings_reported = device_settings.get("reported", {})
+            if device_settings_reported:
+                self.cooling_mode = (
+                    device_settings_reported.get("additional_socket_mode") == "cooling"
+                )
+
         super().__post_init__()
 
     @property
