@@ -669,12 +669,6 @@ class Heater(MillDevice):
             else:
                 _LOGGER.warning("No last metrics for device %s", self.device_id)
 
-            if device_settings_reported:
-                self.regulator_type = device_settings_reported.get("regulator_type")
-                self.predictive_heating = (
-                    device_settings_reported.get("predictive_heating_type") == "advanced"
-                )
-
             self.day_consumption = self.data.get("energyUsageForCurrentDay", 0) / 1000.0
 
         if self.stats:
