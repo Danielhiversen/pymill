@@ -540,7 +540,7 @@ class Mill:
         enabled = device.power_status
 
         payload: dict[str, Any] = {
-            "deviceType": device.deviceType,
+            "deviceType": device.device_type,
             "enabled": enabled,
             "settings": settings,
         }
