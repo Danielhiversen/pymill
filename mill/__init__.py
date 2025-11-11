@@ -537,11 +537,9 @@ class Mill:
             _LOGGER.error("Device id %s not found or unsupported", device_id)
             return False
 
-        enabled = device.power_status
-
         payload: dict[str, Any] = {
             "deviceType": device.device_type,
-            "enabled": enabled,
+            "enabled": bool(device.power_status),
             "settings": settings,
         }
 
@@ -550,7 +548,7 @@ class Mill:
             _LOGGER.error("Failed to patch settings for %s. Payload=%s", device_id, settings)
             return False
 
-        self._cached_data.clear()
+        self._cached_data = {}
         device.last_fetched = dt.datetime.now(dt.timezone.utc)
         return True
 
