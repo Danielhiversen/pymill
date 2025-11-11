@@ -494,7 +494,7 @@ class Mill:
 
         payload: dict[str, Any] = {
             "deviceType": device.device_type,
-            "enabled": bool(power_status),
+            "enabled": power_status,
             "settings": {},
         }
 
