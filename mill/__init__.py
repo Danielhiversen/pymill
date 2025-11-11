@@ -110,6 +110,9 @@ class CacheEntry:
         if payload != self.payload:
             return False
 
+        if ttl <= 0:
+            return True
+
         age = dt.datetime.now(dt.timezone.utc) - self.timestamp
         return age < dt.timedelta(seconds=ttl)
 
@@ -515,7 +518,7 @@ class Mill:
                 )
                 hourly_stats = None
 
-            if not hourly_stats:
+            if hourly_stats is None:
                 break
 
             for item in hourly_stats.get("energyUsage", {}).get("items", []):
