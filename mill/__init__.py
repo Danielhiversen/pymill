@@ -80,20 +80,21 @@ class TokenManager:
 
         self.access_token = access_token
         self.refresh_token = refresh_token
-        self.expires_at = self._extract_expiration(access_token)
-        _LOGGER.debug("Token expires at %s", self.expires_at)
-        return True
-
-    def _extract_expiration(self, token: str) -> dt.datetime:
-        """Extract expiration time from JWT token."""
+        expires_at = None
         try:
-            payload = jwt.decode(token, options={"verify_signature": False})
-            if exp_timestamp := payload.get("exp"):
-                return dt.datetime.fromtimestamp(exp_timestamp, tz=dt.timezone.utc)
+            payload = jwt.decode(access_token, options={"verify_signature": False})
+            exp_timestamp = payload.get("exp")
+            if exp_timestamp:
+                expires_at = dt.datetime.fromtimestamp(exp_timestamp, tz=dt.timezone.utc)
         except jwt.InvalidTokenError as e:
             _LOGGER.warning("Could not decode token expiration: %s", e)
 
-        return dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=TOKEN_DEFAULT_LIFETIME)
+        if not expires_at:
+            expires_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=TOKEN_DEFAULT_LIFETIME)
+
+        self.expires_at = expires_at
+        _LOGGER.debug("Token expires at %s", self.expires_at)
+        return True
 
 
 @dataclass
@@ -316,7 +317,13 @@ class Mill:
         try:
             return await self._execute_request(url, payload, patch, retry, command)
         except asyncio.TimeoutError:
-            return await self._handle_timeout(command, payload, retry, patch, url)
+            if retry < 1:
+                _LOGGER.error("Timed out sending command to Mill: %s", url)
+                return None
+
+            backoff_time = max(0.5, 2 ** (3 - retry) - 0.5)
+            await asyncio.sleep(backoff_time)
+            return await self.request(command, payload, retry - 1, patch=patch)
         except aiohttp.ClientError:
             _LOGGER.exception("Error sending command to Mill: %s", url)
             return None
@@ -331,10 +338,22 @@ class Mill:
     ) -> dict[str, Any] | None:
         """Execute the actual HTTP request."""
         async with asyncio.timeout(self._timeout):
-            resp = await self._send_request(url, payload, patch)
+            headers = self._build_headers(include_auth=True)
+
+            if not payload:
+                resp = await self.websession.get(url, headers=headers)
+            elif patch:
+                resp = await self.websession.patch(url, json=payload, headers=headers)
+            else:
+                resp = await self.websession.post(url, json=payload, headers=headers)
 
             if resp.status == HTTP_UNAUTHORIZED:
-                return await self._handle_unauthorized(command, payload, retry, patch)
+                _LOGGER.debug("Invalid auth token, attempting refresh")
+                if await self.refresh_token():
+                    return await self.request(command, payload, retry - 1, patch=patch)
+
+                _LOGGER.error("Invalid auth token, refresh failed")
+                return None
 
             if resp.status == HTTP_TOO_MANY_REQUESTS:
                 raise TooManyRequestsError(await resp.text())
@@ -345,55 +364,6 @@ class Mill:
             result = await resp.text()
             _LOGGER.debug("Result %s", result)
             return json.loads(result)
-
-    async def _send_request(
-        self,
-        url: str,
-        payload: dict[str, Any] | None,
-        patch: bool,
-    ) -> aiohttp.ClientResponse:
-        """Send HTTP request with appropriate method."""
-        headers = self._build_headers(include_auth=True)
-
-        if not payload:
-            return await self.websession.get(url, headers=headers)
-
-        if patch:
-            return await self.websession.patch(url, json=payload, headers=headers)
-
-        return await self.websession.post(url, json=payload, headers=headers)
-
-    async def _handle_unauthorized(
-        self,
-        command: str,
-        payload: dict[str, Any] | None,
-        retry: int,
-        patch: bool,
-    ) -> dict[str, Any] | None:
-        """Handle unauthorized response by refreshing token and retrying."""
-        _LOGGER.debug("Invalid auth token, attempting refresh")
-        if await self.refresh_token():
-            return await self.request(command, payload, retry - 1, patch=patch)
-
-        _LOGGER.error("Invalid auth token, refresh failed")
-        return None
-
-    async def _handle_timeout(
-        self,
-        command: str,
-        payload: dict[str, Any] | None,
-        retry: int,
-        patch: bool,
-        url: str,
-    ) -> dict[str, Any] | None:
-        """Handle timeout with exponential backoff."""
-        if retry < 1:
-            _LOGGER.error("Timed out sending command to Mill: %s", url)
-            return None
-
-        backoff_time = max(0.5, 2 ** (3 - retry) - 0.5)
-        await asyncio.sleep(backoff_time)
-        return await self.request(command, payload, retry - 1, patch=patch)
 
     async def cached_request(
         self,
@@ -425,45 +395,34 @@ class Mill:
             return
 
         homes = resp.get("ownHouses", [])
-        tasks = [self._update_home(home) for home in homes]
-        await asyncio.gather(*tasks)
+        for home in homes:
+            home_id = home.get("id")
+            if not home_id:
+                continue
 
-    async def _update_home(self, home: dict[str, Any]) -> None:
-        """Update all devices in a home."""
-        home_id = home.get("id")
-        if not home_id:
-            return
+            tasks = []
 
-        tasks = []
+            independent_devices_data = await self.cached_request(
+                f"houses/{home_id}/devices/independent",
+                ttl=60,
+            )
+            if independent_devices_data:
+                tasks.extend(self._update_device(device) for device in independent_devices_data.get("items", []))
 
-        # Update independent devices
-        independent_devices_data = await self.cached_request(
-            f"houses/{home_id}/devices/independent",
-            ttl=60,
-        )
-        if independent_devices_data:
-            tasks.extend(self._update_device(device) for device in independent_devices_data.get("items", []))
+            rooms_data = await self.cached_request(f"houses/{home_id}/devices")
+            if rooms_data:
+                for room in rooms_data:
+                    if not isinstance(room, dict):
+                        _LOGGER.debug("Unexpected room data: %s", room)
+                        continue
+                    room_id = room.get("roomId")
+                    if not room_id:
+                        continue
+                    room_data = await self.cached_request(f"rooms/{room_id}/devices", ttl=90)
+                    tasks.extend(self._update_device(device, room_data) for device in room.get("devices", []))
 
-        # Update room-based devices
-        rooms_data = await self.cached_request(f"houses/{home_id}/devices")
-        if rooms_data:
-            for room in rooms_data:
-                if not isinstance(room, dict):
-                    _LOGGER.debug("Unexpected room data: %s", room)
-                    continue
-                tasks.append(self._update_room(room))
-
-        await asyncio.gather(*tasks)
-
-    async def _update_room(self, room: dict[str, Any]) -> None:
-        """Update all devices in a room."""
-        room_id = room.get("roomId")
-        if not room_id:
-            return
-
-        room_data = await self.cached_request(f"rooms/{room_id}/devices", ttl=90)
-        tasks = [self._update_device(device, room_data) for device in room.get("devices", [])]
-        await asyncio.gather(*tasks)
+            if tasks:
+                await asyncio.gather(*tasks)
 
     async def _update_device(self, device_data: dict[str, Any], room_data: dict[str, Any] | None = None) -> None:
         """Update a single device from API data."""
@@ -479,37 +438,21 @@ class Mill:
             return
 
         if device_type in (DEVICE_TYPE_HEATERS, DEVICE_TYPE_SOCKETS):
-            await self._update_heater_or_socket(device_id, device_type, device_data, room_data)
+            if device_id in self.devices:
+                time_since_update = dt.datetime.now(dt.timezone.utc) - self.devices[device_id].last_fetched
+                if time_since_update < dt.timedelta(seconds=DEVICE_UPDATE_INTERVAL):
+                    return
+
+            device_stats = await self.fetch_yearly_stats(device_id)
+
+            if device_type == DEVICE_TYPE_HEATERS:
+                self.devices[device_id] = Heater.init_from_response(device_data, room_data, device_stats)
+            else:
+                self.devices[device_id] = Socket.init_from_response(device_data, room_data, device_stats)
         elif device_type == DEVICE_TYPE_SENSORS:
             self.devices[device_id] = Sensor.init_from_response(device_data)
         else:
             _LOGGER.error("Unsupported device type: %s", device_type)
-
-    async def _update_heater_or_socket(
-        self,
-        device_id: str,
-        device_type: str,
-        device_data: dict[str, Any],
-        room_data: dict[str, Any] | None,
-    ) -> None:
-        """Update heater or socket device with stats."""
-        if self._should_skip_update(device_id):
-            return
-
-        device_stats = await self.fetch_yearly_stats(device_id)
-
-        if device_type == DEVICE_TYPE_HEATERS:
-            self.devices[device_id] = Heater.init_from_response(device_data, room_data, device_stats)
-        else:
-            self.devices[device_id] = Socket.init_from_response(device_data, room_data, device_stats)
-
-    def _should_skip_update(self, device_id: str) -> bool:
-        """Check if device was recently updated."""
-        if device_id not in self.devices:
-            return False
-
-        time_since_update = dt.datetime.now(dt.timezone.utc) - self.devices[device_id].last_fetched
-        return time_since_update < dt.timedelta(seconds=DEVICE_UPDATE_INTERVAL)
 
     async def fetch_yearly_stats(self, device_id: str, ttl: int = STATS_CACHE_TTL) -> dict[str, float]:
         """Fetch yearly energy consumption statistics."""
@@ -523,39 +466,33 @@ class Mill:
             if is_old or is_new_month:
                 self._stats_cache.pop(device_id)
 
-        prev_months_energy = await self._get_previous_months_energy(device_id, now)
-        current_month_energy = await self._get_current_month_energy(device_id, now, ttl)
-
-        return {"yearly_consumption": prev_months_energy + current_month_energy}
-
-    async def _get_previous_months_energy(self, device_id: str, now: dt.datetime) -> float:
-        """Get energy consumption for previous months in current year."""
         if device_id in self._stats_cache:
-            return self._stats_cache[device_id][0]
+            prev_months_energy = self._stats_cache[device_id][0]
+        else:
+            prev_months_energy = 0.0
+            for month in range(1, now.month):
+                stats = await self.fetch_stats(device_id, now.year, month, 1, "daily", ttl=0)
+                prev_months_energy += sum(
+                    item.get("value", 0) for item in stats.get("energyUsage", {}).get("items", [])
+                )
 
-        energy = 0.0
-        for month in range(1, now.month):
-            stats = await self.fetch_stats(device_id, now.year, month, 1, "daily", ttl=0)
-            energy += sum(item.get("value", 0) for item in stats.get("energyUsage", {}).get("items", []))
+            self._stats_cache[device_id] = (prev_months_energy, now)
 
-        self._stats_cache[device_id] = (energy, now)
-        return energy
-
-    async def _get_current_month_energy(self, device_id: str, now: dt.datetime, ttl: int) -> float:
-        """Get energy consumption for current month."""
         stats = await self.fetch_stats(device_id, now.year, now.month, 1, "daily", ttl=12 * 60 * 60)
 
-        energy = 0.0
+        current_month_energy = 0.0
         for item in stats.get("energyUsage", {}).get("items", []) or []:
             if item.get("lostStatisticData"):
                 # Recover lost daily statistics using hourly data
                 date = dt.datetime.fromisoformat(item["endPeriod"])
                 hourly_stats = await self.fetch_stats(device_id, date.year, date.month, date.day, "hourly", ttl=ttl)
-                energy += sum(_item.get("value", 0) for _item in hourly_stats.get("energyUsage", {}).get("items", []))
+                current_month_energy += sum(
+                    _item.get("value", 0) for _item in hourly_stats.get("energyUsage", {}).get("items", [])
+                )
             else:
-                energy += item.get("value", 0)
+                current_month_energy += item.get("value", 0)
 
-        return energy
+        return {"yearly_consumption": prev_months_energy + current_month_energy}
 
     async def fetch_historic_energy_usage(self, device_id: str, n_days: int = 4) -> dict[dt.datetime, float]:
         """Fetch historic hourly energy usage for the last n_days."""
@@ -565,7 +502,18 @@ class Mill:
 
         for day in range(n_days + 1):
             date = now - dt.timedelta(days=n_days - day)
-            hourly_stats = await self._fetch_stats_safe(device_id, date.year, date.month, date.day, "hourly")
+            try:
+                hourly_stats = await self.fetch_stats(device_id, date.year, date.month, date.day, "hourly")
+            except aiohttp.ClientResponseError:
+                _LOGGER.warning(
+                    "Error when fetching stats for device_id=%s, year=%s, month=%s, day=%s, period=%s",
+                    device_id,
+                    date.year,
+                    date.month,
+                    date.day,
+                    "hourly",
+                )
+                hourly_stats = None
 
             if not hourly_stats:
                 break
@@ -575,28 +523,6 @@ class Mill:
                 result[timestamp] = item.get("value", 0) / 1000.0
 
         return result
-
-    async def _fetch_stats_safe(
-        self,
-        device_id: str,
-        year: int,
-        month: int,
-        day: int,
-        period: str,
-    ) -> dict[str, Any] | None:
-        """Safely fetch stats with error handling."""
-        try:
-            return await self.fetch_stats(device_id, year, month, day, period)
-        except aiohttp.ClientResponseError:
-            _LOGGER.warning(
-                "Error when fetching stats for device_id=%s, year=%s, month=%s, day=%s, period=%s",
-                device_id,
-                year,
-                month,
-                day,
-                period,
-            )
-            return None
 
     # pylint: disable=too-many-arguments
     async def fetch_stats(
