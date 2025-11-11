@@ -488,6 +488,10 @@ class Mill:
             return
 
         device = self.devices[device_id]
+
+        if not isinstance(device, Heater):
+            return
+
         payload: dict[str, Any] = {
             "deviceType": device.device_type,
             "enabled": bool(power_status),
@@ -501,13 +505,14 @@ class Mill:
 
         if await self.request(f"devices/{device_id}/settings", payload, patch=True):
             self._cached_data = {}
-            device.power_status = bool(power_status)
+            self.devices[device_id].power_status = power_status
+
             if not power_status:
                 device.is_heating = False
             else:
                 device.is_heating = (
-                    getattr(device, "set_temp", None) is not None
-                    and getattr(device, "current_temp", None) is not None
+                    device.set_temp is not None
+                    and device.current_temp is not None
                     and device.set_temp > device.current_temp
                 )
             device.last_fetched = dt.datetime.now(dt.timezone.utc)
