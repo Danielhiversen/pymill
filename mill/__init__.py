@@ -486,19 +486,36 @@ class Mill:
         if device_id not in self.devices:
             _LOGGER.error("Device id %s not found", device_id)
             return
-        payload = {
-            "deviceType": self.devices[device_id].device_type,
+
+        device = self.devices[device_id]
+
+        if not isinstance(device, Heater):
+            _LOGGER.error("Device %s is not a heater", device_id)
+            return
+
+        payload: dict[str, Any] = {
+            "deviceType": device.device_type,
             "enabled": power_status,
-            "settings": {"operation_mode": "control_individually" if power_status > 0 else "off"},
         }
+
+        if device.device_type == Heater.device_type:
+            payload["settings"] = {
+                "operation_mode": "control_individually" if power_status else "off",
+            }
+        else:
+            payload["settings"] = {}
+
         if await self.request(f"devices/{device_id}/settings", payload, patch=True):
             self._cached_data = {}
             self.devices[device_id].power_status = power_status
+
             if not power_status:
                 self.devices[device_id].is_heating = False
             else:
                 self.devices[device_id].is_heating = (
-                    self.devices[device_id].set_temp > self.devices[device_id].current_temp
+                    device.set_temp is not None
+                    and device.current_temp is not None
+                    and device.set_temp > device.current_temp
                 )
             self.devices[device_id].last_fetched = dt.datetime.now(dt.timezone.utc)
 
