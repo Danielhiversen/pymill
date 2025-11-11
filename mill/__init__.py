@@ -537,7 +537,7 @@ class Mill:
             _LOGGER.error("Device id %s not found or unsupported", device_id)
             return False
 
-        enabled = bool(getattr(device, "power_status", True))
+        enabled = device.power_status
 
         payload: dict[str, Any] = {
             "deviceType": device.deviceType,
@@ -550,27 +550,23 @@ class Mill:
             _LOGGER.error("Failed to patch settings for %s. Payload=%s", device_id, settings)
             return False
 
-        if isinstance(resp, dict) and resp.get("success") is False:
-            _LOGGER.error("Mill API rejected settings for %s: %s", device_id, resp)
-            return False
-
         self._cached_data.clear()
         device.last_fetched = dt.datetime.now(dt.timezone.utc)
         return True
 
-    async def set_individual_control(self, device_id: str, enabled: bool) -> None:
+    async def set_individual_control(self, device_id: str, enabled: bool) -> bool:
         """Switch: manual/individual control on/off."""
         mode = "control_individually" if enabled else "weekly_program"
-        await self._patch_device_settings(device_id, {"operation_mode": mode})
+        return await self._patch_device_settings(device_id, {"operation_mode": mode})
 
-    async def set_child_lock(self, device_id: str, enabled: bool) -> None:
+    async def set_child_lock(self, device_id: str, enabled: bool) -> bool:
         """Switch: child lock on/off."""
         status = "child_lock" if enabled else "no_lock"
-        await self._patch_device_settings(device_id, {"lock_status": status})
+        return await self._patch_device_settings(device_id, {"lock_status": status})
 
-    async def set_open_window(self, device_id: str, enabled: bool) -> None:
+    async def set_open_window(self, device_id: str, enabled: bool) -> bool:
         """Switch: open-window detection on/off."""
-        await self._patch_device_settings(device_id, {"open_window": {"enabled": enabled}})
+        return await self._patch_device_settings(device_id, {"open_window": {"enabled": enabled}})
 
     def _update_tokens(self, data: dict[str, Any]) -> bool:
         """Update access and refresh tokens from API response data."""
