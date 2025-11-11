@@ -547,6 +547,42 @@ class Mill:
             self.devices[device_id].is_heating = set_temp > self.devices[device_id].current_temp
             self.devices[device_id].last_fetched = dt.datetime.now(dt.timezone.utc)
 
+    async def _patch_device_settings(self, device_id: str, settings: dict[str, Any]) -> bool:
+        """PATCH /devices/{id}/settings for heaters and sockets."""
+        device = self.devices.get(device_id)
+        if not device or not isinstance(device, (Heater, Socket)):
+            _LOGGER.error("Device id %s not found or unsupported", device_id)
+            return False
+
+        payload: dict[str, Any] = {
+            "deviceType": device.device_type,
+            "enabled": bool(device.power_status),
+            "settings": settings,
+        }
+
+        resp = await self.request(f"devices/{device_id}/settings", payload, patch=True)
+        if resp is None:
+            _LOGGER.error("Failed to patch settings for %s. Payload=%s", device_id, settings)
+            return False
+
+        self._cached_data = {}
+        device.last_fetched = dt.datetime.now(dt.timezone.utc)
+        return True
+
+    async def set_individual_control(self, device_id: str, enabled: bool) -> bool:
+        """Switch: manual/individual control on/off."""
+        mode = "control_individually" if enabled else "weekly_program"
+        return await self._patch_device_settings(device_id, {"operation_mode": mode})
+
+    async def set_child_lock(self, device_id: str, enabled: bool) -> bool:
+        """Switch: child lock on/off."""
+        status = "child_lock" if enabled else "no_lock"
+        return await self._patch_device_settings(device_id, {"lock_status": status})
+
+    async def set_open_window(self, device_id: str, enabled: bool) -> bool:
+        """Switch: open-window detection on/off."""
+        return await self._patch_device_settings(device_id, {"open_window": {"enabled": enabled}})
+
     def _update_tokens(self, data: dict[str, Any]) -> bool:
         """Update access and refresh tokens from API response data."""
         if token := data.get("idToken"):
