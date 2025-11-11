@@ -100,7 +100,7 @@ class TokenManager:
 class CacheEntry:
     """Represents a cached value with timestamp."""
 
-    value: Any
+    value: dict[str, Any]
     timestamp: dt.datetime
     payload: dict[str, Any] | None = None
 
@@ -120,14 +120,14 @@ class CacheManager:
         """Initialize cache manager."""
         self._cache: dict[str, CacheEntry] = {}
 
-    def get(self, key: str, ttl: int, payload: dict[str, Any] | None = None) -> Any | None:
+    def get(self, key: str, ttl: int, payload: dict[str, Any] | None = None) -> dict[str, Any] | None:
         """Get cached value if valid."""
         entry = self._cache.get(key)
         if entry and entry.is_valid(ttl, payload):
             return entry.value
         return None
 
-    def set(self, key: str, value: Any, payload: dict[str, Any] | None = None) -> None:
+    def set(self, key: str, value: dict[str, Any], payload: dict[str, Any] | None = None) -> None:
         """Store value in cache."""
         self._cache[key] = CacheEntry(
             value=value,
