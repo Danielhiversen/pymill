@@ -486,19 +486,36 @@ class Mill:
         if device_id not in self.devices:
             _LOGGER.error("Device id %s not found", device_id)
             return
-        payload = {
-            "deviceType": self.devices[device_id].device_type,
+
+        device = self.devices[device_id]
+
+        if not isinstance(device, Heater):
+            _LOGGER.error("Device %s is not a heater", device_id)
+            return
+
+        payload: dict[str, Any] = {
+            "deviceType": device.device_type,
             "enabled": power_status,
-            "settings": {"operation_mode": "control_individually" if power_status > 0 else "off"},
         }
+
+        if device.device_type == Heater.device_type:
+            payload["settings"] = {
+                "operation_mode": "control_individually" if power_status else "off",
+            }
+        else:
+            payload["settings"] = {}
+
         if await self.request(f"devices/{device_id}/settings", payload, patch=True):
             self._cached_data = {}
             self.devices[device_id].power_status = power_status
+
             if not power_status:
                 self.devices[device_id].is_heating = False
             else:
                 self.devices[device_id].is_heating = (
-                    self.devices[device_id].set_temp > self.devices[device_id].current_temp
+                    device.set_temp is not None
+                    and device.current_temp is not None
+                    and device.set_temp > device.current_temp
                 )
             self.devices[device_id].last_fetched = dt.datetime.now(dt.timezone.utc)
 
@@ -529,6 +546,42 @@ class Mill:
             self.devices[device_id].set_temp = set_temp
             self.devices[device_id].is_heating = set_temp > self.devices[device_id].current_temp
             self.devices[device_id].last_fetched = dt.datetime.now(dt.timezone.utc)
+
+    async def _patch_device_settings(self, device_id: str, settings: dict[str, Any]) -> bool:
+        """PATCH /devices/{id}/settings for heaters and sockets."""
+        device = self.devices.get(device_id)
+        if not device or not isinstance(device, (Heater, Socket)):
+            _LOGGER.error("Device id %s not found or unsupported", device_id)
+            return False
+
+        payload: dict[str, Any] = {
+            "deviceType": device.device_type,
+            "enabled": bool(device.power_status),
+            "settings": settings,
+        }
+
+        resp = await self.request(f"devices/{device_id}/settings", payload, patch=True)
+        if resp is None:
+            _LOGGER.error("Failed to patch settings for %s. Payload=%s", device_id, settings)
+            return False
+
+        self._cached_data = {}
+        device.last_fetched = dt.datetime.now(dt.timezone.utc)
+        return True
+
+    async def set_individual_control(self, device_id: str, enabled: bool) -> bool:
+        """Switch: manual/individual control on/off."""
+        mode = "control_individually" if enabled else "weekly_program"
+        return await self._patch_device_settings(device_id, {"operation_mode": mode})
+
+    async def set_child_lock(self, device_id: str, enabled: bool) -> bool:
+        """Switch: child lock on/off."""
+        status = "child_lock" if enabled else "no_lock"
+        return await self._patch_device_settings(device_id, {"lock_status": status})
+
+    async def set_open_window(self, device_id: str, enabled: bool) -> bool:
+        """Switch: open-window detection on/off."""
+        return await self._patch_device_settings(device_id, {"open_window": {"enabled": enabled}})
 
     async def set_regulator_type(self, device_id: str, regulator_type: str) -> bool:
         """Set the regulator type (e.g., "pid", "hysteresis_or_slow_pid")."""
