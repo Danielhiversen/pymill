@@ -724,6 +724,7 @@ class Mill:
         _LOGGER.debug("Setting regulator type to %s for %s", regulator_type, device_id)
         return await self._patch_device_settings(device_id, {"regulator_type": regulator_type})
 
+
 @dataclass
 class MillDevice:
     """Mill Device."""
