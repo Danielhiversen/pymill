@@ -245,7 +245,7 @@ class Mill:
         return headers
 
     @property
-    def user_agent(self) -> str:
+    def user_agent(self) -> str | None:
         """Get user agent string."""
         return self._ua
 
