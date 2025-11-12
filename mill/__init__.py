@@ -375,7 +375,7 @@ class Mill:
         ttl: int = DEFAULT_CACHE_TTL,
     ) -> dict[str, Any] | None:
         """Request data with caching support."""
-        cache_key = f"{url}:{payload}"
+        cache_key = f"{url}:{json.dumps(payload, sort_keys=True) if payload else ''}"
 
         if cached := self._cache.get(cache_key, ttl, payload):
             return cached
@@ -749,7 +749,8 @@ class MillDevice:
         """Initialize device from API response data."""
         # Extract device model from nested device type data
         device_type = device_data.get("deviceType")
-        model = child_type.get("name") if device_type and (child_type := device_type.get("childType")) else None
+        child_type = device_type.get("childType") if device_type else None
+        model = child_type.get("name") if child_type else None
 
         # Extract report time from device metrics
         last_metrics = device_data.get("lastMetrics")
