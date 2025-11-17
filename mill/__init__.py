@@ -732,6 +732,13 @@ class Mill:
             device_id, {"predictive_heating_type": mode}
         )
 
+    async def set_night_saving(self, device_id: str, enabled: bool) -> bool:
+        """Enable or disable night saving mode."""
+        _LOGGER.debug("Setting night saving to %s for %s", enabled, device_id)
+        return await self._patch_device_settings(
+            device_id, {"night_saving_mode_active": enabled}
+        )
+
 @dataclass
 class MillDevice:
     """Mill Device."""
@@ -814,6 +821,7 @@ class Heater(MillDevice):
     floor_temperature: float | None = None
     regulator_type: str | None = None
     predictive_heating: bool | None = None
+    night_saving: bool | None = None
 
     def __post_init__(self) -> None:
         """Initialize heater from device data."""
@@ -834,7 +842,10 @@ class Heater(MillDevice):
         device_settings_reported = device_settings.get("reported", {})
         device_settings_desired = device_settings.get("desired", {})
         self.regulator_type = device_settings_reported.get("regulator_type")
-        self.predictive_heating = device_settings_reported.get("predictive_heating_type")
+        predictive_mode = device_settings_reported.get("predictive_heating_type")
+        self.predictive_heating = None if predictive_mode is None else predictive_mode == "advanced"
+        night_saving_mode = device_settings_reported.get("night_saving_mode_active")
+        self.night_saving = None if night_saving_mode is None else bool(night_saving_mode)
 
         last_metrics = self.data.get("lastMetrics", {})
 
