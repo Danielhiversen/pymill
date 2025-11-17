@@ -724,6 +724,13 @@ class Mill:
         _LOGGER.debug("Setting regulator type to %s for %s", regulator_type, device_id)
         return await self._patch_device_settings(device_id, {"regulator_type": regulator_type})
 
+    async def set_predictive_heating(self, device_id: str, enabled: bool) -> bool:
+        """Enable or disable predictive heating."""
+        _LOGGER.debug("Setting predictive heating to %s for %s", enabled, device_id)
+        mode = "advanced" if enabled else "off"
+        return await self._patch_device_settings(
+            device_id, {"predictive_heating_type": mode}
+        )
 
 @dataclass
 class MillDevice:
@@ -806,6 +813,7 @@ class Heater(MillDevice):
     year_consumption: float | None = None
     floor_temperature: float | None = None
     regulator_type: str | None = None
+    predictive_heating: bool | None = None
 
     def __post_init__(self) -> None:
         """Initialize heater from device data."""
@@ -826,6 +834,7 @@ class Heater(MillDevice):
         device_settings_reported = device_settings.get("reported", {})
         device_settings_desired = device_settings.get("desired", {})
         self.regulator_type = device_settings_reported.get("regulator_type")
+        self.predictive_heating = device_settings_reported.get("predictive_heating_type")
 
         last_metrics = self.data.get("lastMetrics", {})
 
