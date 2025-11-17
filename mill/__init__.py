@@ -43,6 +43,7 @@ MODE_OFF = "off"
 # Lock states
 LOCK_CHILD = "child_lock"
 LOCK_NONE = "no_lock"
+LOCK_COMMERCIAL = "commercial"
 
 _LOGGER = logging.getLogger(__name__)
 LOCK = asyncio.Lock()
@@ -715,6 +716,12 @@ class Mill:
         status = LOCK_CHILD if enabled else LOCK_NONE
         return await self._patch_device_settings(device_id, {"lock_status": status})
 
+    async def set_commercial_lock(self, device_id: str, enabled: bool) -> bool:
+        """Switch commercial lock on or off."""
+        _LOGGER.debug("Setting commercial lock to %s for %s", enabled, device_id)
+        status = LOCK_COMMERCIAL if enabled else LOCK_NONE
+        return await self._patch_device_settings(device_id, {"lock_status": status})
+
     async def set_open_window(self, device_id: str, enabled: bool) -> bool:
         """Toggle open-window detection on or off."""
         return await self._patch_device_settings(device_id, {"open_window": {"enabled": enabled}})
@@ -828,6 +835,7 @@ class Heater(MillDevice):
     floor_temperature: float | None = None
     regulator_type: str | None = None
     predictive_heating: bool | None = None
+    commercial_lock: bool | None = None
     night_saving: bool | None = None
     frost_protection: bool | None = None
 
@@ -854,6 +862,9 @@ class Heater(MillDevice):
         self.predictive_heating = None if predictive_mode is None else predictive_mode == "advanced"
         night_saving_mode = device_settings_reported.get("night_saving_mode_active")
         self.night_saving = None if night_saving_mode is None else bool(night_saving_mode)
+        lock_status = device_settings_reported.get("lock_status")
+        if lock_status is not None:
+            self.commercial_lock = lock_status == LOCK_COMMERCIAL
         frost_protection = device_settings_reported.get("frost_protection_active")
         self.frost_protection = None if frost_protection is None else bool(frost_protection)
 
