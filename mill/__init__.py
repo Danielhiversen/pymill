@@ -739,6 +739,13 @@ class Mill:
             device_id, {"night_saving_mode_active": enabled}
         )
 
+    async def set_frost_protection(self, device_id: str, enabled: bool) -> bool:
+        """Enable or disable frost protection mode."""
+        _LOGGER.debug("Setting frost protection to %s for %s", enabled, device_id)
+        return await self._patch_device_settings(
+            device_id, {"frost_protection_active": enabled}
+        )
+
 @dataclass
 class MillDevice:
     """Mill Device."""
@@ -822,6 +829,7 @@ class Heater(MillDevice):
     regulator_type: str | None = None
     predictive_heating: bool | None = None
     night_saving: bool | None = None
+    frost_protection: bool | None = None
 
     def __post_init__(self) -> None:
         """Initialize heater from device data."""
@@ -846,6 +854,8 @@ class Heater(MillDevice):
         self.predictive_heating = None if predictive_mode is None else predictive_mode == "advanced"
         night_saving_mode = device_settings_reported.get("night_saving_mode_active")
         self.night_saving = None if night_saving_mode is None else bool(night_saving_mode)
+        frost_protection = device_settings_reported.get("frost_protection_active")
+        self.frost_protection = None if frost_protection is None else bool(frost_protection)
 
         last_metrics = self.data.get("lastMetrics", {})
 
