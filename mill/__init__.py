@@ -753,6 +753,14 @@ class Mill:
             device_id, {"frost_protection_active": enabled}
         )
 
+    async def set_cooling_mode(self, device_id: str, enabled: bool) -> bool:
+        """Enable or disable cooling mode for sockets."""
+        _LOGGER.debug("Setting cooling mode to %s for %s", enabled, device_id)
+        mode = "cooling" if enabled else None
+        return await self._patch_device_settings(
+            device_id, {"additional_socket_mode": mode}
+        )
+
 @dataclass
 class MillDevice:
     """Mill Device."""
@@ -911,6 +919,14 @@ class Socket(Heater):
         if self.data:
             last_metrics = self.data.get("lastMetrics", {})
             self.humidity = last_metrics.get("humidity")
+
+            device_settings = self.data.get("deviceSettings", {})
+            device_settings_reported = device_settings.get("reported", {})
+            if device_settings_reported:
+                self.cooling_mode = (
+                    device_settings_reported.get("additional_socket_mode") == "cooling"
+                )
+
         super().__post_init__()
 
     @property
