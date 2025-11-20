@@ -639,8 +639,10 @@ class Mill:
         operation_mode = MODE_INDIVIDUAL if power_status else MODE_OFF
         payload: dict[str, Any] = {
             "deviceType": device.device_type,
-            "enabled": power_status,
-            "settings": {"operation_mode": operation_mode} if device.device_type == DEVICE_TYPE_HEATERS else {},
+            "enabled": True,
+            "settings": {
+                "operation_mode": operation_mode
+            },
         }
 
         if await self.request(f"devices/{device_id}/settings", payload, patch=True):
