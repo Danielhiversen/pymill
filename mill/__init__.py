@@ -913,6 +913,7 @@ class Socket(Heater):
     """Representation of socket with humidity sensor."""
 
     humidity: float | None = None
+    cooling_mode: bool | None = None
 
     def __post_init__(self) -> None:
         """Initialize socket from device data."""
@@ -923,9 +924,8 @@ class Socket(Heater):
             device_settings = self.data.get("deviceSettings", {})
             device_settings_reported = device_settings.get("reported", {})
             if device_settings_reported:
-                self.cooling_mode = (
-                    device_settings_reported.get("additional_socket_mode") == "cooling"
-                )
+                cooling_mode = device_settings_reported.get("additional_socket_mode")
+                self.cooling_mode = None if cooling_mode is None else cooling_mode == "cooling"
 
         super().__post_init__()
 
